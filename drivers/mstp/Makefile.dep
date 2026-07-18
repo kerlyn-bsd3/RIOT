@@ -1,0 +1,5 @@
+# Dependencies for the MS/TP (6LoBAC) netdev driver — SKELETON.
+USEMODULE += netdev_legacy_api
+FEATURES_REQUIRED += periph_uart
+FEATURES_REQUIRED += periph_gpio
+# TODO: add gnrc_netif attachment (raw/6lo) and libschc when integrating.
