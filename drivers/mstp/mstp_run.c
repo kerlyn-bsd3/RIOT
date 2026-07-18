@@ -73,17 +73,25 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
     uart_write(dev->params.uart, frame, n);
 
     /*
-     * 9.2 Tpostdrive: release DE only after the final stop bit has shifted out.
-     * periph_uart exposes no portable TX-complete flag, so wait one frame-time
-     * plus a two-character margin (the approach proven on the wire in Session 9).
-     * The sanctioned X'FF' padding-octet + UART-TC refinement (notes §2) is a
-     * later improvement if the token's last octet is ever seen to clip.
+     * 9.2 Tpostdrive: disable the driver only after the final stop bit has been
+     * generated — but no later than Tpostdrive. RIOT's blocking uart_write()
+     * already spins on the USART transmit-complete (TC) flag before returning
+     * (cpu/stm32/periph/uart.c: wait_for_tx_complete()), so the last stop bit is
+     * on the wire by the time we reach here; drop DE immediately.
+     *
+     * This must be prompt: on the DFR0259, /RE is tied to DE, so while DE is
+     * asserted the receiver is OFF. A peer answers a Poll For Manager almost
+     * immediately (its own Tturnaround, ~40 bit times), so any post-drive delay
+     * here keeps us deaf across the reply and the join is lost. (An earlier fixed
+     * ~(n+2)-character sleep did exactly that — correct for the Session-9 TX-only
+     * emitter, fatal once we must receive the answer.)
+     *
+     * NB: this relies on uart_write() being synchronous-to-TC — true for the
+     * blocking periph_uart path used here, but NOT for periph_uart_nonblocking or
+     * the DMA path below the threshold; revisit if either is enabled.
      */
-    uint32_t tx_us = (uint32_t)((10ULL * 1000000ULL * ((uint64_t)n + 2U))
-                                / dev->params.baud);
-    ztimer_sleep(ZTIMER_USEC, tx_us);
     gpio_clear(dev->params.de_pin);               /* release driver (receive)   */
-    dev->txing = false;                           /* echo window over; RX real traffic */
+    dev->txing = false;
 
     dev->rx.silence_timer = 0;                    /* 9.5.5: cleared per octet TX */
 }

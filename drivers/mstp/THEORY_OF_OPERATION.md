@@ -147,16 +147,32 @@ happens when the node holds the token.
 
 ## 7. DE (driver-enable) timing
 
-For releasing the RS-485 driver after a transmit, `send_frame` uses a **computed
-frame-time delay** (one frame-time + a two-character margin), the approach
-already proven to put a spec-correct frame on the wire in Session 9, because
-`periph_uart` exposes no portable TX-complete flag. The sanctioned alternative
-(notes §2) — append a trailing X'FF' padding octet and drop DE on the UART's
-transmit-complete interrupt — is more robust for the tight token turnaround
-(`Tusage_timeout` = 20 ms) and is the planned refinement **if** the token's last
-octet is ever observed to clip in the BDK/Wireshark capture. We start simple and
-escalate only on evidence, because the delay approach is known-good and the
-padding-octet path is more un-compiled code to get right.
+There are two turnarounds, and getting the **TX→RX** one wrong silently breaks
+token passing on a shield (like the DFR0259) that ties /RE to DE, because then
+the receiver is off for exactly as long as the driver is on.
+
+**TX→RX (release DE after transmitting).** `send_frame` drops DE the instant
+`uart_write` returns, and no sooner: RIOT's blocking `uart_write` already spins on
+the USART transmit-complete (TC) flag before returning
+(`cpu/stm32/periph/uart.c: wait_for_tx_complete()`), so the final stop bit is
+already on the wire — dropping DE immediately satisfies "not before the stop bit"
+and is well within Tpostdrive. An earlier version instead slept a fixed
+`(n+2)`-character time (~0.9 ms) after `uart_write`; that was harmless for the
+Session-9 TX-only emitter but *fatal* for token passing — with /RE tied to DE it
+kept the receiver deaf ~0.9 ms past our last bit, straddling the peer's fast
+Reply-To-PFM (a responder turns around in ~40 bit times), so the join was lost
+every time (Session 14). The lesson: never hold DE past TC when a reply follows.
+This does assume `uart_write` is synchronous-to-TC — true for the blocking
+`periph_uart` path used here, but not for `periph_uart_nonblocking` or the DMA
+path, which would need an explicit TC wait before dropping DE.
+
+**RX→TX (wait before transmitting).** `Tturnaround` is 40 bit times (347 µs at
+115.2 kbit/s) — below a 1 ms tick. `send_frame` currently waits it out with
+`ZTIMER_USEC` against a millisecond-granular SilenceTimer, which is coarse. The
+cleaner, self-clocking technique (used in the Contiki port) is to clock four
+10-bit bytes through the UART with the *driver disabled* before the preamble:
+that consumes exactly 40 bit times off the baud clock, no timer, auto-scaling with
+baud. Planned for the data-frame SendFrame path.
 
 ## 8. Deferred: `ReceiveError` hardware source
 
