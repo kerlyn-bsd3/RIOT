@@ -84,12 +84,14 @@ static mstp_rx_result_t deliver(mstp_rx_fsm_t *fsm, uint16_t msdu_len)
     fsm->frame.length      = msdu_len;
     fsm->state = MSTP_RX_IDLE;
     fsm->stats.frames_ok++;
+    fsm->received_valid_frame = true;   /* 9.5.4.4 NoData/GoodCRC: ReceivedValidFrame */
     return MSTP_RX_FRAME;
 }
 
 static mstp_rx_result_t invalid(mstp_rx_fsm_t *fsm)
 {
     fsm->state = MSTP_RX_IDLE;
+    fsm->received_invalid_frame = true; /* 9.5.4: BadHeader/BadCRC/Timeout/Error */
     return MSTP_RX_INVALID;
 }
 
@@ -178,8 +180,29 @@ static mstp_rx_result_t enter_validate_encoded(mstp_rx_fsm_t *fsm)
 
 /* ------------------------------------------------------------------------- */
 
+/*
+ * EventCount (9.5.2) counts link activity. Per 9.5.4 it is incremented on every
+ * octet or ReceiveError event handled while the FSM is in IDLE, PREAMBLE, or
+ * HEADER (9.5.4.1 EatAnError/EatAnOctet/Preamble1; 9.5.4.2 Error/RepeatedPreamble1/
+ * NotPreamble/Preamble2; 9.5.4.3 Error/FrameType/…/HeaderCRC) — and NOT during
+ * the DATA/SKIP_DATA/RECEIVE_ENCODED_FIELDS phases nor on a silence timeout. It
+ * is used by the Manager Node FSM (PASS_TOKEN SawTokenUser, NO_TOKEN) to detect
+ * that another node has begun transmitting.
+ */
+static bool counts_event(mstp_rx_state_t state)
+{
+    return (state == MSTP_RX_IDLE) ||
+           (state == MSTP_RX_PREAMBLE) ||
+           (state == MSTP_RX_HEADER);
+}
+
 mstp_rx_result_t mstp_rx_fsm_error(mstp_rx_fsm_t *fsm)
 {
+    /* Every ReceiveError transition (9.5.4) clears SilenceTimer (activity). */
+    fsm->silence_timer = 0;
+    if (counts_event(fsm->state)) {
+        fsm->event_count++;
+    }
     fsm->stats.receive_error++;
 
     switch (fsm->state) {
@@ -217,6 +240,16 @@ mstp_rx_result_t mstp_rx_fsm_silence(mstp_rx_fsm_t *fsm)
 
 mstp_rx_result_t mstp_rx_fsm_octet(mstp_rx_fsm_t *fsm, uint8_t octet)
 {
+    /*
+     * Every octet-consuming transition in 9.5.4 "set[s] SilenceTimer to zero"
+     * (activity detected); IDLE/PREAMBLE/HEADER events also increment EventCount.
+     * Both are done once here on entry — the state is read before any transition.
+     */
+    fsm->silence_timer = 0;
+    if (counts_event(fsm->state)) {
+        fsm->event_count++;
+    }
+
     switch (fsm->state) {
 
     case MSTP_RX_IDLE:                                        /* 9.5.4.1 */

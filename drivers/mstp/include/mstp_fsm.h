@@ -151,6 +151,19 @@ typedef struct {
     uint16_t input_index;       /**< index into input_buffer                   */
     uint8_t  input_buffer[MSTP_INPUT_BUFFER_SIZE];
 
+    /*
+     * Shared link variables (135-2024 9.5.2). The Receive Frame FSM is the
+     * producer; the Manager/Subordinate Node FSM is the consumer and clears the
+     * flags/counters ("A Boolean flag set to TRUE by the Receive State Machine
+     * ... Set to FALSE by the main state machine"). Kept in the struct of the
+     * machine that clocks them, so the node FSM reads them through a pointer to
+     * this instance (see mstp_mgr.c).
+     */
+    uint32_t event_count;             /**< EventCount (9.5.2): link-activity events */
+    uint32_t silence_timer;           /**< SilenceTimer (9.5.2), in milliseconds    */
+    bool     received_valid_frame;    /**< ReceivedValidFrame (9.5.2)               */
+    bool     received_invalid_frame;  /**< ReceivedInvalidFrame (9.5.2)             */
+
     mstp_frame_t    frame;      /**< valid iff last result == MSTP_RX_FRAME    */
     mstp_rx_stats_t stats;      /**< diagnostics                               */
 } mstp_rx_fsm_t;
@@ -188,6 +201,24 @@ mstp_rx_result_t mstp_rx_fsm_error(mstp_rx_fsm_t *fsm);
  * @return MSTP_RX_INVALID if a frame was aborted, else MSTP_RX_NONE
  */
 mstp_rx_result_t mstp_rx_fsm_silence(mstp_rx_fsm_t *fsm);
+
+/**
+ * @brief   Advance SilenceTimer (9.5.2) by @p ms milliseconds.
+ *
+ * The normative SilenceTimer "is incremented by a timer process and is cleared
+ * by the Receive State Machine when activity is detected and by the SendFrame
+ * procedure as each octet is transmitted" (9.5.2). @ref mstp_rx_fsm_octet and
+ * @ref mstp_rx_fsm_error clear it on activity; this helper is the timer process.
+ * The Manager Node FSM reads @c fsm->silence_timer for its LostToken /
+ * ReplyTimeout / Tusage_timeout / Tno_token decisions.
+ *
+ * @param[in,out] fsm  FSM instance
+ * @param[in]     ms   elapsed milliseconds to add
+ */
+static inline void mstp_rx_fsm_silence_tick(mstp_rx_fsm_t *fsm, uint32_t ms)
+{
+    fsm->silence_timer += ms;
+}
 
 #ifdef __cplusplus
 }

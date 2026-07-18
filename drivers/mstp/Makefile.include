@@ -1,0 +1,2 @@
+# Expose the MS/TP driver's public headers to applications and to its own sources.
+INCLUDES += -I$(RIOTBASE)/drivers/mstp/include

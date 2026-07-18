@@ -1,5 +1,14 @@
-# Dependencies for the MS/TP (6LoBAC) netdev driver — SKELETON.
-USEMODULE += netdev_legacy_api
+# Dependencies for the MS/TP (6LoBAC) driver.
 FEATURES_REQUIRED += periph_uart
 FEATURES_REQUIRED += periph_gpio
-# TODO: add gnrc_netif attachment (raw/6lo) and libschc when integrating.
+
+# FSM thread + timers used by mstp_run.c.
+USEMODULE += core_thread_flags
+USEMODULE += ztimer
+USEMODULE += ztimer_msec
+USEMODULE += ztimer_usec
+USEMODULE += ztimer_periodic
+
+# netdev ops in mstp_netdev.c are still stubs; keep the legacy API available.
+USEMODULE += netdev_legacy_api
+# TODO: gnrc_netif attachment (raw/6lo) + libschc when wiring the IPv6 data path.

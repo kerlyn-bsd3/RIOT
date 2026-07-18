@@ -1,0 +1,25 @@
+# Host build for the clean-room MS/TP FSM unit tests — no RIOT, no hardware.
+# The driver is now self-contained (crc/cobs live in drivers/mstp), so these
+# tests no longer reference the bring-up app.
+#
+#   make -f Makefile.host check
+#
+CC       ?= cc
+CFLAGS   ?= -std=c11 -Wall -Wextra -O2
+INCLUDES := -I../include
+COMMON   := ../mstp_mgr.c ../mstp_fsm.c ../mstp_link.c ../mstp_crc.c ../mstp_cobs.c
+
+.PHONY: all check clean
+all: test_mstp_mgr test_mstp_link
+
+test_mstp_mgr: test_mstp_mgr.c $(COMMON)
+	$(CC) $(CFLAGS) $(INCLUDES) test_mstp_mgr.c $(COMMON) -o $@
+
+test_mstp_link: test_mstp_link.c $(COMMON)
+	$(CC) $(CFLAGS) $(INCLUDES) test_mstp_link.c $(COMMON) -o $@
+
+check: all
+	./test_mstp_mgr && ./test_mstp_link
+
+clean:
+	$(RM) test_mstp_mgr test_mstp_link
