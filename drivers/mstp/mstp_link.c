@@ -43,5 +43,19 @@ void mstp_link_pump(mstp_rx_fsm_t *rx, mstp_mgr_t *mgr, mstp_ring_t *ring,
         }
     }
 
+    /*
+     * Tframe_abort recovery (9.5.4/9.5.3). If a frame is in progress and the
+     * medium has been silent past Tframe_abort, abandon it and return the
+     * receiver to IDLE so it re-syncs on the next preamble. Half-duplex echo of
+     * our own transmission, a bus-turnaround glitch, or a dropped octet can
+     * otherwise strand the Receive FSM mid-frame, where it would swallow the
+     * start of the next real frame and fail its header CRC. Keyed on the
+     * inter-frame silence gap, so it works against conforming stations that do
+     * not emit a trailing X'FF' pad octet.
+     */
+    if ((rx->state != MSTP_RX_IDLE) && (rx->silence_timer >= MSTP_TFRAME_ABORT_MS)) {
+        (void)mstp_rx_fsm_silence(rx);
+    }
+
     while (mstp_mgr_step(mgr)) { }                   /* run to quiescence */
 }

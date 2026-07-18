@@ -16,4 +16,7 @@ USEMODULE += ztimer
 USEMODULE += ztimer_msec
 USEMODULE += ztimer_usec
 
+# Max_Manager: highest MS-TP manager address this node polls (0..Nmax_manager).
+CFLAGS += -DMSTP_DEFAULT_NMAX_MANAGER=8
+
 include $(RIOTBASE)/Makefile.include

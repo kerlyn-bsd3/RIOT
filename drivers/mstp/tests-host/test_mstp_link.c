@@ -168,6 +168,36 @@ static void t_pump_error_slot(void)
     CHECK(!f.rx.received_invalid_frame, "ReceivedInvalidFrame cleared by mgr");
 }
 
+/* A partial frame (echo/glitch) must NOT swallow the next real frame: after
+ * Tframe_abort of silence the receiver re-syncs and the following reply lands.
+ * This is the regression for the "Reply To PFM has no effect" bug. */
+static void t_pump_reframes_after_partial(void)
+{
+    printf("t_pump_reframes_after_partial\n");
+    fix_t f; setup(&f, 5);
+    mstp_link_pump(&f.rx, &f.mgr, &f.ring, 0);       /* -> IDLE */
+
+    /* A clipped frame arrives: preamble + one header octet, then nothing more
+     * (as if our own echo lost its tail). The Receive FSM is left mid-HEADER. */
+    mstp_ring_put(&f.ring, 0x55);
+    mstp_ring_put(&f.ring, 0xFF);
+    mstp_ring_put(&f.ring, MSTP_FT_TOKEN);
+    mstp_link_pump(&f.rx, &f.mgr, &f.ring, 1);
+    CHECK(f.rx.state == MSTP_RX_HEADER, "stranded mid-HEADER after a partial frame");
+
+    /* Silence past Tframe_abort with no octets -> abort, back to IDLE. */
+    mstp_link_pump(&f.rx, &f.mgr, &f.ring, MSTP_TFRAME_ABORT_MS);
+    CHECK(f.rx.state == MSTP_RX_IDLE, "Tframe_abort returned receiver to IDLE");
+
+    /* Now the genuine reply (a PFM to us) is received cleanly and answered — it
+     * would have been lost if the receiver were still stuck in the old frame. */
+    unsigned before = f.mock.n;
+    isr_rx_ctrl(&f, MSTP_FT_POLL_FOR_MANAGER, /*dst*/5, /*src*/1);
+    mstp_link_pump(&f.rx, &f.mgr, &f.ring, 1);
+    CHECK(f.mock.n == before + 1, "reframed frame processed");
+    CHECK(last(&f)->ft == MSTP_FT_REPLY_TO_POLL_FOR_MANAGER, "replied to the poll");
+}
+
 int main(void)
 {
     t_ring_basic();
@@ -176,6 +206,7 @@ int main(void)
     t_pump_generate_and_pass();
     t_pump_reply_to_pfm();
     t_pump_error_slot();
+    t_pump_reframes_after_partial();
     printf("\n%d checks, %d failures\n", g_checks, g_fail);
     return g_fail ? 1 : 0;
 }

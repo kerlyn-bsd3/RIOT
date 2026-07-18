@@ -22,6 +22,7 @@
 #ifndef MSTP_H
 #define MSTP_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "periph/uart.h"
@@ -77,6 +78,8 @@ typedef struct {
 
     ztimer_periodic_t tick;       /**< periodic SilenceTimer / timeout tick      */
     thread_t         *fsm_thread; /**< FSM thread (target of thread_flags_set)   */
+    volatile bool     txing;      /**< true while driving the bus: RX ISR drops
+                                       our own half-duplex echo (9.5.4)          */
     uint32_t          last_ms;    /**< ztimer_now at the previous pump           */
     char              fsm_stack[MSTP_THREAD_STACKSIZE];
 } mstp_t;

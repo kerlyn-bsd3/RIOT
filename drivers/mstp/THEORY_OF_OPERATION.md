@@ -101,6 +101,24 @@ control-only rings need a tiny fraction of that. A full ring increments a
 CRC or silence-timeout failure → `ReceivedInvalidFrame`, so the failure mode is
 safe, not silent corruption.
 
+**Receiving right after transmitting.** A manager spends most of its time
+transmitting a frame and then immediately listening for the answer (poll → reply,
+token → successor's first frame), so the TX→RX turnaround is the delicate path,
+and two hazards there once cost a node its ability to accept a `Reply To Poll For
+Manager`. First, on half-duplex RS-485 the transceiver echoes what we drive back
+onto RX (9.5.4 anticipates this: "if a given implementation does receive its own
+transmissions … the Receive Frame machine will ignore the transmissions"). We
+honour that by raising a `txing` flag around the driver-enabled window; the UART
+ISR drops every octet while it is set, so our own frame never enters the ring.
+Second, any stray partial frame — a clipped echo, a bus-turnaround glitch, a
+dropped octet — must not strand the Receive FSM mid-frame, or it will consume the
+start of the next real frame and fail its header CRC. `mstp_link_pump` therefore
+runs the normative `Tframe_abort` recovery (9.5.3/9.5.4): if a frame is in
+progress and the line has been silent past `Tframe_abort`, it abandons the frame
+and returns the receiver to IDLE to re-sync on the next preamble. Crucially this
+keys on the **inter-frame silence gap**, which MS/TP always provides — not on the
+optional trailing X'FF' pad octet, which a conforming peer may omit.
+
 ## 6. The hybrid layering, and the path to `netdev`/gnrc
 
 The integration is deliberately split so that the token-passing bring-up and the

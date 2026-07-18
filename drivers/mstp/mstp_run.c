@@ -68,6 +68,7 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
         ztimer_sleep(ZTIMER_USEC, tturn_us - silence_us);
     }
 
+    dev->txing = true;                            /* ignore our own RX echo (9.5.4) */
     gpio_set(dev->params.de_pin);                 /* enable driver (transmit)   */
     uart_write(dev->params.uart, frame, n);
 
@@ -82,6 +83,7 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
                                 / dev->params.baud);
     ztimer_sleep(ZTIMER_USEC, tx_us);
     gpio_clear(dev->params.de_pin);               /* release driver (receive)   */
+    dev->txing = false;                           /* echo window over; RX real traffic */
 
     dev->rx.silence_timer = 0;                    /* 9.5.5: cleared per octet TX */
 }
@@ -99,6 +101,17 @@ static const mstp_mgr_port_t _port = {
 static void _uart_rx(void *arg, uint8_t data)
 {
     mstp_t *dev = arg;
+
+    /*
+     * Ignore our own transmission (135-2024 9.5.4): on half-duplex RS-485 the
+     * transceiver echoes what we drive back onto RX. Dropping it here keeps the
+     * echo out of the ring entirely, so it can never strand the Receive FSM
+     * mid-frame ahead of a peer's reply. (Reading `data` already cleared RXNE, so
+     * no overrun results from discarding it.)
+     */
+    if (dev->txing) {
+        return;
+    }
 
     /*
      * The stock periph_uart callback conveys only the octet, so status is always
@@ -151,6 +164,7 @@ int mstp_start(mstp_t *dev)
     mstp_rx_fsm_init(&dev->rx, dev->params.mac_addr);
     mstp_mgr_init(&dev->mgr, &dev->rx, dev->params.mac_addr, &_port, dev);
     mstp_ring_reset(&dev->ring);
+    dev->txing = false;
     dev->fsm_thread = NULL;
 
     kernel_pid_t pid = thread_create(dev->fsm_stack, sizeof(dev->fsm_stack),

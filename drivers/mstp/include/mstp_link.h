@@ -62,6 +62,21 @@ extern "C" {
 #define MSTP_OCTET_ERR      (0x100U)
 
 /**
+ * @brief   Tframe_abort (135-2024 9.5.3), in milliseconds.
+ *
+ * Mid-frame silence after which the receiver abandons an incomplete frame and
+ * re-syncs on the next preamble. The normative value is 60 bit times (0.52 ms at
+ * 115.2 kbit/s), permitted up to 100 ms. With the driver's 1 ms SilenceTimer
+ * tick, 2 ms is a safe default: far larger than the maximum intra-frame octet
+ * gap (Tframe_gap, 20 bit times ≈ 0.17 ms) yet well below Tusage_timeout (20 ms).
+ * This is what lets the receiver recover from a partial frame using the
+ * inter-frame *silence* gap — no trailing pad octet required.
+ */
+#ifndef MSTP_TFRAME_ABORT_MS
+#define MSTP_TFRAME_ABORT_MS    (2U)
+#endif
+
+/**
  * @brief   SPSC lock-free octet ring (UART ISR produces, FSM thread consumes).
  *
  * Safe without locks given exactly one producer and one consumer and atomic
