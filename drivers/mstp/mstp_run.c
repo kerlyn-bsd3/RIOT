@@ -30,6 +30,23 @@
 #define MSTP_TF_RX      (1u << 0)   /**< octet(s) enqueued by the UART ISR       */
 #define MSTP_TF_TICK    (1u << 1)   /**< SilenceTimer / timeout tick             */
 
+/* Diagnostic event trace: record one {RX,TX} event (SPSC; FSM thread produces). */
+static void ev_put(mstp_t *dev, uint8_t ev, uint8_t ft, uint8_t addr)
+{
+#if (MSTP_EVLOG_LEN > 0)
+    uint16_t h = dev->ev_head;
+    mstp_ev_t *e = &dev->evlog[h & (MSTP_EVLOG_LEN - 1U)];
+    e->t_us = ztimer_now(ZTIMER_USEC);
+    e->ev   = ev;
+    e->st   = (uint8_t)dev->mgr.state;
+    e->ft   = ft;
+    e->addr = addr;
+    dev->ev_head = h + 1U;
+#else
+    (void)dev; (void)ev; (void)ft; (void)addr;
+#endif
+}
+
 /* ------------------------------------------------------------------------- *
  * SendFrame — 135-2024 9.5.5 (RS-485 half of the procedure)
  * ------------------------------------------------------------------------- */
@@ -68,6 +85,7 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
         ztimer_sleep(ZTIMER_USEC, tturn_us - silence_us);
     }
 
+    ev_put(dev, MSTP_EV_TX, ft, dst);             /* trace: about to transmit   */
     dev->txing = true;                            /* ignore our own RX echo (9.5.4) */
     gpio_set(dev->params.de_pin);                 /* enable driver (transmit)   */
     uart_write(dev->params.uart, frame, n);
@@ -160,6 +178,12 @@ static void *_fsm_thread(void *arg)
         uint32_t elapsed = now - dev->last_ms;      /* wrap-safe unsigned delta */
         dev->last_ms = now;
         mstp_link_pump(&dev->rx, &dev->mgr, &dev->ring, elapsed);
+
+        /* trace: a valid frame was delivered to us during this pump */
+        if (dev->rx.stats.frames_ok != dev->last_frames_ok) {
+            dev->last_frames_ok = dev->rx.stats.frames_ok;
+            ev_put(dev, MSTP_EV_RX, dev->rx.frame.frame_type, dev->rx.frame.source);
+        }
     }
     return NULL;
 }

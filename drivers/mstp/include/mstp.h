@@ -56,6 +56,34 @@ extern "C" {
 #endif
 
 /**
+ * @brief   Diagnostic event trace depth (power of two). Set to 0 to compile out.
+ *
+ * A lock-free single-producer (FSM thread) / single-consumer (a reporting thread)
+ * ring of timestamped {RX,TX} events. Only frames addressed to us and our own
+ * transmissions are recorded, so at MS/TP control-frame rates it never floods.
+ * Lets the app measure real response latency, which the coarse 1 s status line
+ * cannot show.
+ */
+#ifndef MSTP_EVLOG_LEN
+#define MSTP_EVLOG_LEN          (128U)
+#endif
+
+/** Event kinds for @ref mstp_ev_t. */
+enum {
+    MSTP_EV_RX = 1,   /**< a valid frame was delivered to us (addr = source)      */
+    MSTP_EV_TX = 2,   /**< we began transmitting a frame (addr = destination)     */
+};
+
+/** One diagnostic trace record. */
+typedef struct {
+    uint32_t t_us;    /**< ztimer_now(ZTIMER_USEC) at the event                   */
+    uint8_t  ev;      /**< MSTP_EV_RX / MSTP_EV_TX                                */
+    uint8_t  st;      /**< Manager FSM state at the event (mstp_mgr_state_t)      */
+    uint8_t  ft;      /**< frame type                                            */
+    uint8_t  addr;    /**< RX: source address; TX: destination address           */
+} mstp_ev_t;
+
+/**
  * @brief   Static configuration for one MS/TP interface.
  */
 typedef struct {
@@ -81,6 +109,13 @@ typedef struct {
     volatile bool     txing;      /**< true while driving the bus: RX ISR drops
                                        our own half-duplex echo (9.5.4)          */
     uint32_t          last_ms;    /**< ztimer_now at the previous pump           */
+
+    /* diagnostic event trace (see MSTP_EVLOG_LEN) */
+    mstp_ev_t         evlog[MSTP_EVLOG_LEN];
+    volatile uint16_t ev_head;    /**< producer index (FSM thread)               */
+    uint16_t          ev_tail;    /**< consumer index (reporting/main thread)    */
+    uint32_t          last_frames_ok; /**< to detect newly delivered RX frames    */
+
     char              fsm_stack[MSTP_THREAD_STACKSIZE];
 } mstp_t;
 
