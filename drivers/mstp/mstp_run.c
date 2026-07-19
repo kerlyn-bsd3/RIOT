@@ -31,7 +31,8 @@
 #define MSTP_TF_TICK    (1u << 1)   /**< SilenceTimer / timeout tick             */
 
 /* Diagnostic event trace: record one {RX,TX,RXINV} event (SPSC; FSM thread produces). */
-static void ev_put(mstp_t *dev, uint8_t ev, uint8_t ft, uint8_t src, uint8_t dst)
+static void ev_put(mstp_t *dev, uint8_t ev, uint8_t ft, uint8_t src, uint8_t dst,
+                   uint16_t aux)
 {
 #if (MSTP_EVLOG_LEN > 0)
     uint16_t h = dev->ev_head;
@@ -42,9 +43,10 @@ static void ev_put(mstp_t *dev, uint8_t ev, uint8_t ft, uint8_t src, uint8_t dst
     e->ft   = ft;
     e->src  = src;
     e->dst  = dst;
+    e->aux  = aux;
     dev->ev_head = h + 1U;
 #else
-    (void)dev; (void)ev; (void)ft; (void)src; (void)dst;
+    (void)dev; (void)ev; (void)ft; (void)src; (void)dst; (void)aux;
 #endif
 }
 
@@ -86,7 +88,7 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
         ztimer_sleep(ZTIMER_USEC, tturn_us - silence_us);
     }
 
-    ev_put(dev, MSTP_EV_TX, ft, src, dst);        /* trace: about to transmit   */
+    ev_put(dev, MSTP_EV_TX, ft, src, dst, 0);     /* trace: about to transmit   */
     dev->txing = true;                            /* ignore our own RX echo (9.5.4) */
     gpio_set(dev->params.de_pin);                 /* enable driver (transmit)   */
     uart_write(dev->params.uart, frame, n);
@@ -142,6 +144,18 @@ static void _uart_rx(void *arg, uint8_t data)
     }
 
     /*
+     * Overrun peek (optional; mstp_params_t::ore_sr). RIOT's ISR reads the USART
+     * status, calls us on RXNE, and only THEN clears ORE — so at this instant the
+     * overrun flag is still live. If it is set, an octet was lost to a receive
+     * overrun (RIOT would have silently discarded it). Note it so it surfaces as
+     * receive_error and, via the frame-start snapshot, as abort_with_ore. We only
+     * read the register (non-destructive); RIOT still owns clearing ORECF.
+     */
+    if (dev->params.ore_sr && (*dev->params.ore_sr & dev->params.ore_mask)) {
+        mstp_rx_fsm_note_overrun(&dev->rx);
+    }
+
+    /*
      * The stock periph_uart callback conveys only the octet, so status is always
      * OK here. When a `periph_uart_rx_error` feature is available (notes §3), an
      * error-aware callback would push (MSTP_OCTET_ERR | data) on a framing/overrun
@@ -185,7 +199,7 @@ static void *_fsm_thread(void *arg)
         if (dev->rx.stats.frames_ok != dev->last_frames_ok) {
             dev->last_frames_ok = dev->rx.stats.frames_ok;
             ev_put(dev, MSTP_EV_RX, dev->rx.frame.frame_type,
-                   dev->rx.frame.source, dev->rx.frame.destination);
+                   dev->rx.frame.source, dev->rx.frame.destination, 0);
         }
         /* trace: an invalid frame was seen during this pump. rx.frame is NOT
          * updated on an invalid frame, so report the raw header (best-effort:
@@ -195,7 +209,7 @@ static void *_fsm_thread(void *arg)
         if (dev->rx.stats.frames_inv != dev->last_frames_inv) {
             dev->last_frames_inv = dev->rx.stats.frames_inv;
             ev_put(dev, MSTP_EV_RXINV, dev->rx.header[0],
-                   dev->rx.header[2], dev->rx.header[1]);
+                   dev->rx.header[2], dev->rx.header[1], dev->rx.abort_index);
         }
     }
     return NULL;

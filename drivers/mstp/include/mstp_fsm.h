@@ -134,6 +134,9 @@ typedef struct {
     uint32_t cobs_err;        /**< COBS decode errors                          */
     uint32_t frame_abort;     /**< Tframe_abort silence timeouts               */
     uint32_t receive_error;   /**< ReceiveError events (framing/overrun)       */
+    uint32_t abort_with_ore;  /**< Tframe_aborts where an overrun occurred      *
+                               *   during the frame — proves the lost octet     *
+                               *   was a receive overrun, not something else.   */
 } mstp_rx_stats_t;
 
 /**
@@ -172,6 +175,19 @@ typedef struct {
 
     mstp_frame_t    frame;      /**< valid iff last result == MSTP_RX_FRAME    */
     mstp_rx_stats_t stats;      /**< diagnostics                               */
+
+    /* Last Tframe_abort site (diagnostic): how far the aborted frame got.
+     * abort_index is the octet index reached (0 = preamble only); abort_state
+     * is the mstp_rx_state_t we were stalled in. Set by mstp_rx_fsm_silence(). */
+    uint16_t abort_index;
+    uint8_t  abort_state;
+
+    /* Overrun-correlation (diagnostic): snapshot of stats.receive_error taken at
+     * frame start. If receive_error has advanced by the time the frame aborts, an
+     * overrun happened mid-frame — i.e. the missing octet was a lost overrun.
+     * receive_error is bumped by mstp_rx_fsm_note_overrun() from ISR context; a
+     * 32-bit read/write is atomic on Cortex-M, so no lock is needed. */
+    uint32_t rxerr_at_frame_start;
 } mstp_rx_fsm_t;
 
 /**

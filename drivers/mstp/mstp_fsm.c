@@ -243,11 +243,18 @@ mstp_rx_result_t mstp_rx_fsm_silence(mstp_rx_fsm_t *fsm)
         /* 9.5.4.2 Timeout: "a correct preamble has not been received" — no flag. */
         case MSTP_RX_PREAMBLE:
             return idle(fsm);
-        /* 9.5.4.3/.5/.7/.8 Timeout: ReceivedInvalidFrame. */
+        /* 9.5.4.3/.5/.7/.8 Timeout: ReceivedInvalidFrame. Record how far we got
+         * (which octet the frame stalled on) before discarding it. */
         case MSTP_RX_HEADER:
         case MSTP_RX_DATA:
         case MSTP_RX_SKIP_DATA:
         case MSTP_RX_RECEIVE_ENCODED_FIELDS:
+            fsm->abort_index = fsm->index;
+            fsm->abort_state = (uint8_t)fsm->state;
+            /* did an overrun occur while this frame was in progress? */
+            if (fsm->stats.receive_error != fsm->rxerr_at_frame_start) {
+                fsm->stats.abort_with_ore++;
+            }
             return invalid(fsm);
         default:
             fsm->stats.frame_abort--;   /* IDLE: nothing to abort */
@@ -271,6 +278,8 @@ mstp_rx_result_t mstp_rx_fsm_octet(mstp_rx_fsm_t *fsm, uint8_t octet)
 
     case MSTP_RX_IDLE:                                        /* 9.5.4.1 */
         if (octet == MSTP_PREAMBLE_55) {                     /* Preamble1 */
+            /* frame start: baseline the overrun count for mid-frame correlation */
+            fsm->rxerr_at_frame_start = fsm->stats.receive_error;
             fsm->state = MSTP_RX_PREAMBLE;
         }
         /* else EatAnOctet: remain in IDLE */

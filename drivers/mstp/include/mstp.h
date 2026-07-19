@@ -83,6 +83,7 @@ typedef struct {
     uint8_t  ft;      /**< frame type                                            */
     uint8_t  src;     /**< source address (RX/RXINV: frame src; TX: our TS)       */
     uint8_t  dst;     /**< destination address                                   */
+    uint16_t aux;     /**< RXINV: octet index reached at abort; else 0            */
 } mstp_ev_t;
 
 /**
@@ -93,6 +94,20 @@ typedef struct {
     uint32_t baud;      /**< bus baud rate (e.g. 115200 for the BDK ring)       */
     gpio_t   de_pin;    /**< driver-enable (DE) GPIO; HIGH = transmit           */
     uint8_t  mac_addr;  /**< this node's MS/TP address / This Station (0..127)  */
+
+    /*
+     * Optional overrun (ORE) detection. RIOT's periph_uart callback conveys only
+     * a data octet — it silently reads-and-clears the USART overrun flag and
+     * never tells us an octet was lost, so a receive overrun is invisible (it
+     * shows up only as an incomplete frame → Tframe_abort). To surface it without
+     * forking core RIOT or hardcoding a USART into this otherwise board-agnostic
+     * driver, the (board-specific) app may hand us a pointer to the USART status
+     * register and the ORE bit mask. The RX ISR peeks it BEFORE RIOT clears ORE
+     * (RIOT clears it only after our callback returns). Leave @c ore_sr NULL to
+     * disable — no register access happens then.
+     */
+    volatile const uint32_t *ore_sr;  /**< USART status reg (e.g. &USARTx->ISR); NULL = off */
+    uint32_t ore_mask;                /**< ORE bit within *ore_sr (e.g. USART_ISR_ORE)       */
 } mstp_params_t;
 
 /**

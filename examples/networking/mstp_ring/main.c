@@ -35,6 +35,20 @@
 #ifndef MSTP_SRC_ADDR
 #define MSTP_SRC_ADDR       (0x03U)        /* This Station (0..127, non-colliding) */
 #endif
+/*
+ * Optional receive-overrun (ORE) detection. RIOT's periph_uart hides overruns
+ * from the rx callback, so a lost octet is invisible (it only shows up as an
+ * incomplete frame → Tframe_abort). We hand the driver a pointer to this USART's
+ * status register + the ORE bit; the RX ISR peeks it before RIOT clears ORE.
+ * Board/CPU-specific: USART6 is UART_DEV(1) on the nucleo-f767zi. Adjust if
+ * MSTP_UART_DEV changes; leave both undefined (or ore_sr NULL) to disable.
+ */
+#ifndef MSTP_ORE_SR
+#define MSTP_ORE_SR         (&USART6->ISR)
+#endif
+#ifndef MSTP_ORE_MASK
+#define MSTP_ORE_MASK       (USART_ISR_ORE)
+#endif
 #ifndef MSTP_STATUS_PERIOD_MS
 #define MSTP_STATUS_PERIOD_MS (1000U)
 #endif
@@ -68,6 +82,8 @@ int main(void)
         .baud     = MSTP_BAUD,
         .de_pin   = MSTP_DE_PIN,
         .mac_addr = MSTP_SRC_ADDR,
+        .ore_sr   = MSTP_ORE_SR,
+        .ore_mask = MSTP_ORE_MASK,
     };
     mstp_setup(&dev, &params, 0);
     if (mstp_start(&dev) != 0) {
@@ -84,7 +100,7 @@ int main(void)
                                        & (MSTP_RX_RING_LEN - 1U));
         printf("state=%-16s TS=%u NS=%u PS=%u sole=%d TokenCount=%u\n"
                "   rx ok=%lu inv=%lu [hdrcrc=%lu src255=%lu badlen=%lu "
-               "toolong=%lu abort=%lu datacrc=%lu cobs=%lu rxerr=%lu] "
+               "toolong=%lu abort=%lu(ore=%lu) datacrc=%lu cobs=%lu rxerr=%lu] "
                "drop=%lu txdrop=%lu ringq=%u\n",
                state_name(dev.mgr.state), dev.mgr.ts, dev.mgr.ns, dev.mgr.ps,
                (int)dev.mgr.sole_manager, (unsigned)dev.mgr.token_count,
@@ -95,6 +111,7 @@ int main(void)
                (unsigned long)dev.rx.stats.bad_length,
                (unsigned long)dev.rx.stats.frame_too_long,
                (unsigned long)dev.rx.stats.frame_abort,
+               (unsigned long)dev.rx.stats.abort_with_ore,
                (unsigned long)dev.rx.stats.data_crc_err,
                (unsigned long)dev.rx.stats.cobs_err,
                (unsigned long)dev.rx.stats.receive_error,
@@ -121,10 +138,18 @@ int main(void)
             const char *tag = (e->ev == MSTP_EV_RX)    ? "RX   "
                             : (e->ev == MSTP_EV_TX)    ? "TX   "
                             :                            "RXINV";
-            printf("   %10lu us  %s  ft=%-2u src=%-3u dst=%-3u  [%s]\n",
-                   (unsigned long)e->t_us, tag, (unsigned)e->ft,
-                   (unsigned)e->src, (unsigned)e->dst,
-                   state_name((mstp_mgr_state_t)e->st));
+            if (e->ev == MSTP_EV_RXINV) {
+                printf("   %10lu us  %s  ft=%-2u src=%-3u dst=%-3u  [%s] idx=%u\n",
+                       (unsigned long)e->t_us, tag, (unsigned)e->ft,
+                       (unsigned)e->src, (unsigned)e->dst,
+                       state_name((mstp_mgr_state_t)e->st), (unsigned)e->aux);
+            }
+            else {
+                printf("   %10lu us  %s  ft=%-2u src=%-3u dst=%-3u  [%s]\n",
+                       (unsigned long)e->t_us, tag, (unsigned)e->ft,
+                       (unsigned)e->src, (unsigned)e->dst,
+                       state_name((mstp_mgr_state_t)e->st));
+            }
             dev.ev_tail++;
         }
     }
