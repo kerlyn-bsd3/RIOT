@@ -49,6 +49,25 @@
 #ifndef MSTP_ORE_MASK
 #define MSTP_ORE_MASK       (USART_ISR_ORE)
 #endif
+/*
+ * Overrun mitigation / experiment: force the MS/TP UART RX interrupt to the
+ * highest priority so a long *same-priority* peripheral ISR cannot delay it past
+ * one character time (~87 us @115200) — the window in which the 1-deep RDR
+ * overruns (RIOT's stm32 UART has no RX FIFO/DMA). Board/CPU-specific:
+ * USART6 == UART_DEV(1) on the nucleo-f767zi. Lower number = higher priority.
+ *
+ * NB: RIOT's irq_disable() uses PRIMASK, which masks ALL priorities, so this
+ * does NOT help if the stall is a PRIMASK critical section. That makes it a
+ * clean discriminator: if overruns (rxerr/abort-ore) drop sharply, the cause was
+ * ISR-priority contention; if they don't budge, the latency is a masked-IRQ
+ * window and the fix is real RX buffering (FIFO or circular DMA).
+ */
+#ifndef MSTP_UART_IRQN
+#define MSTP_UART_IRQN      USART6_IRQn
+#endif
+#ifndef MSTP_UART_IRQ_PRIO
+#define MSTP_UART_IRQ_PRIO  (0U)
+#endif
 #ifndef MSTP_STATUS_PERIOD_MS
 #define MSTP_STATUS_PERIOD_MS (1000U)
 #endif
@@ -90,6 +109,13 @@ int main(void)
         puts("FATAL: mstp_start failed");
         return 1;
     }
+
+    /* Experiment: raise MS/TP UART RX IRQ priority above other peripheral ISRs.
+     * See notes at MSTP_UART_IRQ_PRIO. mstp_start() has already run uart_init(),
+     * so the vector/enable are set; we only re-prioritise. */
+    NVIC_SetPriority(MSTP_UART_IRQN, MSTP_UART_IRQ_PRIO);
+    printf("UART RX IRQ (#%d) priority set to %u\n",
+           (int)MSTP_UART_IRQN, (unsigned)MSTP_UART_IRQ_PRIO);
 
     /* Diagnostic poll of the FSM thread's state. These reads race benignly with
      * the FSM thread; they are for human observation only. */
