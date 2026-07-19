@@ -48,31 +48,40 @@ static bool for_us(const mstp_rx_fsm_t *fsm)
     return (dst == fsm->this_station) || (dst == 255U);
 }
 
+/** CheckHeader (9.5.8) outcome, split by cause for diagnostics. */
+typedef enum {
+    HDR_OK = 0,       /**< GoodHeader                                        */
+    HDR_BAD_CRC,      /**< HeaderCRC residue mismatch                        */
+    HDR_SRC_255,      /**< Source Address == 255 (illegal, 9.3)              */
+    HDR_BAD_LENGTH,   /**< DataLength illegal for the frame type             */
+} hdr_check_t;
+
 /**
  * The CheckHeader procedure — 135-2024 Clause 9.5.8.
  * Sets GoodHeader FALSE on a bad header CRC residue, a broadcast source, or a
- * DataLength that is illegal for the frame's type.
+ * DataLength that is illegal for the frame's type. Returns the *cause* so the
+ * caller can account each distinctly (a CRC bit flip vs. a shifted octet).
  */
-static bool check_header(const mstp_rx_fsm_t *fsm)
+static hdr_check_t check_header(const mstp_rx_fsm_t *fsm)
 {
     uint8_t frame_type = fsm->header[0];
     uint8_t source = fsm->header[2];
     uint16_t len = fsm->data_length;
 
     if (fsm->header_crc != MSTP_HEADER_CRC_RESIDUE) {
-        return false;
+        return HDR_BAD_CRC;
     }
     if (source == 255U) {
-        return false;   /* a Source Address of 255 is not allowed (9.3) */
+        return HDR_SRC_255;   /* a Source Address of 255 is not allowed (9.3) */
     }
     if (!is_cobs_type(frame_type) && (len > MSTP_MAX_NONENCODED_LEN)) {
-        return false;
+        return HDR_BAD_LENGTH;
     }
     if (is_cobs_type(frame_type) &&
         ((len < MSTP_NMIN_COBS_LENGTH) || (len > MSTP_NMAX_COBS_LENGTH))) {
-        return false;
+        return HDR_BAD_LENGTH;
     }
-    return true;
+    return HDR_OK;
 }
 
 /** Hand the assembled frame up. */
@@ -110,8 +119,14 @@ static mstp_rx_result_t enter_header_crc(mstp_rx_fsm_t *fsm)
 {
     uint16_t len = fsm->data_length;
 
-    if (!check_header(fsm)) {                                   /* BadHeader */
-        fsm->stats.header_crc_err++;
+    hdr_check_t hc = check_header(fsm);
+    if (hc != HDR_OK) {                                         /* BadHeader */
+        switch (hc) {
+            case HDR_SRC_255:    fsm->stats.src_invalid++;    break;
+            case HDR_BAD_LENGTH: fsm->stats.bad_length++;     break;
+            case HDR_BAD_CRC:
+            default:             fsm->stats.header_crc_err++; break;
+        }
         return invalid(fsm);
     }
     if (!for_us(fsm)) {
@@ -123,6 +138,7 @@ static mstp_rx_result_t enter_header_crc(mstp_rx_fsm_t *fsm)
         return MSTP_RX_NONE;
     }
     if (len > MSTP_INPUT_BUFFER_SIZE) {                      /* FrameTooLong */
+        fsm->stats.frame_too_long++;
         fsm->index = 0;
         fsm->state = MSTP_RX_SKIP_DATA;
         return MSTP_RX_INVALID;

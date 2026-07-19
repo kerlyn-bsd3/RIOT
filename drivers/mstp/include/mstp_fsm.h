@@ -124,7 +124,12 @@ typedef struct {
 typedef struct {
     uint32_t frames_ok;       /**< ReceivedValidFrame count                    */
     uint32_t frames_inv;      /**< ReceivedInvalidFrame count (every invalid())*/
-    uint32_t header_crc_err;  /**< BadHeader (CheckHeader failed)              */
+    /* CheckHeader (9.5.8) failure causes — split so a bit flip (crc) is
+     * distinguishable from a dropped/shifted octet (src255 / badlen). */
+    uint32_t header_crc_err;  /**< BadHeader: HeaderCRC residue mismatch       */
+    uint32_t src_invalid;     /**< BadHeader: Source Address == 255 (illegal)  */
+    uint32_t bad_length;      /**< BadHeader: DataLength illegal for frame type */
+    uint32_t frame_too_long;  /**< FrameTooLong: len > InputBuffer (SKIP_DATA) */
     uint32_t data_crc_err;    /**< BadCRC (DATA_CRC / VALIDATE_ENCODED_FIELDS) */
     uint32_t cobs_err;        /**< COBS decode errors                          */
     uint32_t frame_abort;     /**< Tframe_abort silence timeouts               */

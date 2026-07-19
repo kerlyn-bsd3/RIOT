@@ -82,12 +82,21 @@ int main(void)
 
         unsigned ring_occ = (unsigned)((dev.ring.head - dev.ring.tail)
                                        & (MSTP_RX_RING_LEN - 1U));
-        printf("state=%-16s TS=%u NS=%u PS=%u sole=%d "
-               "TokenCount=%u | rx ok=%lu inv=%lu err=%lu drop=%lu txdrop=%lu ringq=%u\n",
+        printf("state=%-16s TS=%u NS=%u PS=%u sole=%d TokenCount=%u\n"
+               "   rx ok=%lu inv=%lu [hdrcrc=%lu src255=%lu badlen=%lu "
+               "toolong=%lu abort=%lu datacrc=%lu cobs=%lu rxerr=%lu] "
+               "drop=%lu txdrop=%lu ringq=%u\n",
                state_name(dev.mgr.state), dev.mgr.ts, dev.mgr.ns, dev.mgr.ps,
                (int)dev.mgr.sole_manager, (unsigned)dev.mgr.token_count,
                (unsigned long)dev.rx.stats.frames_ok,
                (unsigned long)dev.rx.stats.frames_inv,
+               (unsigned long)dev.rx.stats.header_crc_err,
+               (unsigned long)dev.rx.stats.src_invalid,
+               (unsigned long)dev.rx.stats.bad_length,
+               (unsigned long)dev.rx.stats.frame_too_long,
+               (unsigned long)dev.rx.stats.frame_abort,
+               (unsigned long)dev.rx.stats.data_crc_err,
+               (unsigned long)dev.rx.stats.cobs_err,
                (unsigned long)dev.rx.stats.receive_error,
                (unsigned long)dev.ring.dropped,
                (unsigned long)dev.txing_drop, ring_occ);
