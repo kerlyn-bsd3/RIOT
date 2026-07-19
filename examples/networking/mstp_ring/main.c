@@ -161,6 +161,17 @@ int main(void)
          * so we can measure real response latency (poll->reply, token->pass). */
         while (dev.ev_tail != dev.ev_head) {
             const mstp_ev_t *e = &dev.evlog[dev.ev_tail & (MSTP_EVLOG_LEN - 1U)];
+            dev.ev_tail++;
+            /*
+             * A live ring emits hundreds of Token RX/TX events per second —
+             * enough to saturate the 115200 console and bury the status line.
+             * Print only the events we care about: every RXINV, plus any
+             * non-Token frame (PFM / Reply-To-PFM / data). Routine Token traffic
+             * is already summarised by recvTok/sendTok on the status line.
+             */
+            if (e->ev != MSTP_EV_RXINV && e->ft == MSTP_FT_TOKEN) {
+                continue;
+            }
             const char *tag = (e->ev == MSTP_EV_RX)    ? "RX   "
                             : (e->ev == MSTP_EV_TX)    ? "TX   "
                             :                            "RXINV";
@@ -176,7 +187,6 @@ int main(void)
                        (unsigned)e->src, (unsigned)e->dst,
                        state_name((mstp_mgr_state_t)e->st));
             }
-            dev.ev_tail++;
         }
     }
     return 0;
