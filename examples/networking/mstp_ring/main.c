@@ -68,6 +68,18 @@
 #ifndef MSTP_UART_IRQ_PRIO
 #define MSTP_UART_IRQ_PRIO  (0U)
 #endif
+/*
+ * RX FIFO (Session 20): give the receiver 8 octets of headroom instead of the
+ * 1-deep RDR. The IRQ-priority bump removed the same-priority ISR contention, but
+ * a residual ~0.25% of frames still overran (Session 19) — PRIMASK critical
+ * sections (irq_disable) held longer than one char-time (~87us @115200), which
+ * priority cannot preempt. The STM32F7 USART has an 8-byte RX FIFO; enabling it
+ * lets a window up to ~8 char-times (~694us) pass without dropping an octet.
+ * Set MSTP_ENABLE_RX_FIFO to 0 (e.g. -DMSTP_ENABLE_RX_FIFO=0) to A/B test.
+ */
+#ifndef MSTP_ENABLE_RX_FIFO
+#define MSTP_ENABLE_RX_FIFO (1)
+#endif
 #ifndef MSTP_STATUS_PERIOD_MS
 #define MSTP_STATUS_PERIOD_MS (1000U)
 #endif
@@ -116,6 +128,30 @@ int main(void)
     NVIC_SetPriority(MSTP_UART_IRQN, MSTP_UART_IRQ_PRIO);
     printf("UART RX IRQ (#%d) priority set to %u\n",
            (int)MSTP_UART_IRQN, (unsigned)MSTP_UART_IRQ_PRIO);
+
+    /*
+     * Enable the USART6 8-byte RX FIFO for overrun headroom. RIOT's F7 UART
+     * already uses the FIFO-aware flags (RXFNE) and keeps RXFNEIE enabled, so its
+     * single-read ISR drains the FIFO one octet per (immediately re-pending)
+     * interrupt — no core-RIOT change needed. FIFOEN is writable only with UE=0,
+     * so briefly disable the peripheral (a one-time startup blip, before the ring
+     * is established). Validate on the bench: rxerr and abort(ore=) should fall by
+     * orders of magnitude vs the Session-19 baseline (rxerr=443,
+     * abort=211(ore=207) over 83k frames). If they do NOT, the residual window
+     * exceeds the 8-octet FIFO and the escalation is circular RX DMA.
+     */
+#if MSTP_ENABLE_RX_FIFO
+#ifdef USART_CR1_FIFOEN
+    USART6->CR1 &= ~USART_CR1_UE;          /* FIFOEN writable only with UE=0 */
+    USART6->CR1 |= USART_CR1_FIFOEN;
+    USART6->CR1 |= USART_CR1_UE;           /* re-enable */
+    printf("USART6 RX FIFO %s\n",
+           (USART6->CR1 & USART_CR1_FIFOEN) ? "ENABLED (8-byte)"
+                                            : "FAILED to enable");
+#else
+    puts("NOTE: USART_CR1_FIFOEN undefined for this CPU — RX FIFO unavailable");
+#endif
+#endif
 
     /* Diagnostic poll of the FSM thread's state. These reads race benignly with
      * the FSM thread; they are for human observation only. */
