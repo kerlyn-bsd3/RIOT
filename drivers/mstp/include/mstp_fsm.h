@@ -218,6 +218,20 @@ mstp_rx_result_t mstp_rx_fsm_octet(mstp_rx_fsm_t *fsm, uint8_t octet);
 mstp_rx_result_t mstp_rx_fsm_error(mstp_rx_fsm_t *fsm);
 
 /**
+ * @brief   Note a receive overrun (diagnostic).
+ *
+ * Increments @c stats.receive_error. Intended to be called from the UART RX ISR
+ * when the USART overrun (ORE) flag is observed for a delivered octet (see
+ * mstp_params_t::ore_sr) — RIOT's periph_uart otherwise clears ORE silently and
+ * never signals the lost octet. Combined with the frame-start snapshot
+ * (@c rxerr_at_frame_start), a mid-frame overrun is later attributed to the
+ * resulting Tframe_abort as @c stats.abort_with_ore.
+ *
+ * @param[in,out] fsm  FSM instance
+ */
+void mstp_rx_fsm_note_overrun(mstp_rx_fsm_t *fsm);
+
+/**
  * @brief   SilenceTimer exceeded Tframe_abort (9.5.3: 60 bit times, ≤100 ms).
  * @param[in,out] fsm  FSM instance
  * @return MSTP_RX_INVALID if a frame was aborted, else MSTP_RX_NONE
