@@ -137,6 +137,10 @@ void mstp_mgr_init(mstp_mgr_t *node, mstp_rx_fsm_t *rx, uint8_t ts,
     node->rx               = rx;
     node->port             = port;
     node->port_ctx         = port_ctx;
+
+    for (size_t i = 0; i < sizeof(node->ctr) / sizeof(uint32_t); i++) {
+        ((uint32_t *)&node->ctr)[i] = 0;
+    }
 }
 
 void mstp_mgr_set_limits(mstp_mgr_t *node, uint8_t nmax_manager,
@@ -170,6 +174,7 @@ static bool step_idle(mstp_mgr_t *node)
     /* LostToken */
     if (silence(node) >= MSTP_TNO_TOKEN_MS) {
         clear_events(node);                 /* set EventCount to zero */
+        node->ctr.lost_token++;
         node->state = MSTP_MGR_NO_TOKEN;
         return true;
     }
@@ -201,6 +206,7 @@ static bool step_idle(mstp_mgr_t *node)
             clear_rvf(node);
             node->frame_count  = 0;
             node->sole_manager = false;
+            node->ctr.received_token++;
             node->state = MSTP_MGR_USE_TOKEN;
             return true;
         }
@@ -208,6 +214,7 @@ static bool step_idle(mstp_mgr_t *node)
         if (for_us && ft == MSTP_FT_POLL_FOR_MANAGER) {
             send_frame(node, MSTP_FT_REPLY_TO_POLL_FOR_MANAGER, src, NULL, 0);
             clear_rvf(node);
+            node->ctr.received_pfm++;
             node->state = MSTP_MGR_IDLE;
             return true;
         }
@@ -381,6 +388,7 @@ static bool step_done_with_token(mstp_mgr_t *node)
         send_frame(node, MSTP_FT_TOKEN, ns, NULL, 0);
         node->retry_count = 0;
         clear_events(node);
+        node->ctr.send_token++;
         node->state = MSTP_MGR_PASS_TOKEN;
         return true;
     }
@@ -422,6 +430,7 @@ static bool step_pass_token(mstp_mgr_t *node)
 {
     /* SawTokenUser */
     if (silence(node) < MSTP_TUSAGE_TIMEOUT_MS && events(node) > MSTP_NMIN_OCTETS) {
+        node->ctr.saw_token_user++;
         node->state = MSTP_MGR_IDLE;
         return true;
     }
@@ -430,6 +439,7 @@ static bool step_pass_token(mstp_mgr_t *node)
         node->retry_count++;
         send_frame(node, MSTP_FT_TOKEN, node->ns, NULL, 0);
         clear_events(node);
+        node->ctr.retry_send_token++;
         node->state = MSTP_MGR_PASS_TOKEN;   /* re-enter */
         return true;
     }
@@ -441,6 +451,7 @@ static bool step_pass_token(mstp_mgr_t *node)
         node->ns = node->ts;
         node->retry_count = 0;
         node->token_count = 0;
+        node->ctr.find_new_successor++;
         node->state = MSTP_MGR_POLL_FOR_MANAGER;
         return true;
     }
@@ -451,6 +462,7 @@ static bool step_pass_token(mstp_mgr_t *node)
         node->ns = node->ts;
         node->retry_count = 0;
         node->token_count = 0;
+        node->ctr.find_new_successor++;
         node->state = MSTP_MGR_POLL_FOR_MANAGER;
         return true;
     }
@@ -477,6 +489,7 @@ static bool step_no_token(mstp_mgr_t *node)
         node->ns = node->ts;
         node->retry_count = 0;
         node->token_count = 0;
+        node->ctr.generate_token++;
         node->state = MSTP_MGR_POLL_FOR_MANAGER;
         return true;
     }
@@ -502,6 +515,7 @@ static bool step_poll_for_manager(mstp_mgr_t *node)
             node->token_count = 0;
             node->retry_count = 0;
             clear_rvf(node);
+            node->ctr.received_reply_to_pfm++;
             node->state = MSTP_MGR_PASS_TOKEN;
             return true;
         }
@@ -526,6 +540,7 @@ static bool step_poll_for_manager(mstp_mgr_t *node)
         send_frame(node, MSTP_FT_TOKEN, node->ns, NULL, 0);
         node->retry_count = 0;
         clear_rif(node);
+        node->ctr.done_with_pfm++;
         node->state = MSTP_MGR_PASS_TOKEN;
         return true;
     }

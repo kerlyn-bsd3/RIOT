@@ -92,6 +92,7 @@ static mstp_rx_result_t invalid(mstp_rx_fsm_t *fsm)
 {
     fsm->state = MSTP_RX_IDLE;
     fsm->received_invalid_frame = true; /* 9.5.4: BadHeader/BadCRC/Timeout/Error */
+    fsm->stats.frames_inv++;            /* diagnostic: every ReceivedInvalidFrame */
     return MSTP_RX_INVALID;
 }
 

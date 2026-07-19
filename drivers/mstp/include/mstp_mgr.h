@@ -170,6 +170,24 @@ typedef struct {
 } mstp_mgr_port_t;
 
 /**
+ * @brief   Diagnostic transition counters (9.5.6). Not part of the normative
+ *          machine; incremented once each time the named transition fires so a
+ *          bring-up app can see *which* edges the ring is (or is not) taking.
+ */
+typedef struct {
+    uint32_t received_token;        /**< IDLE ReceivedToken                    */
+    uint32_t received_pfm;          /**< IDLE ReceivedPFM (we answered a PFM)  */
+    uint32_t received_reply_to_pfm; /**< POLL_FOR_MANAGER ReceivedReplyToPFM   */
+    uint32_t send_token;            /**< DONE_WITH_TOKEN SendToken             */
+    uint32_t saw_token_user;        /**< PASS_TOKEN SawTokenUser               */
+    uint32_t retry_send_token;      /**< PASS_TOKEN RetrySendToken             */
+    uint32_t find_new_successor;    /**< PASS_TOKEN FindNewSuccessor[Unknown]  */
+    uint32_t done_with_pfm;         /**< POLL_FOR_MANAGER DoneWithPFM          */
+    uint32_t generate_token;        /**< NO_TOKEN GenerateToken                */
+    uint32_t lost_token;            /**< IDLE LostToken                        */
+} mstp_mgr_counters_t;
+
+/**
  * @brief   Manager Node FSM instance.
  */
 typedef struct {
@@ -195,6 +213,8 @@ typedef struct {
     mstp_rx_fsm_t *rx;              /**< holds the shared 9.5.2 variables       */
     const mstp_mgr_port_t *port; /**< SendFrame + higher-layer callbacks     */
     void *port_ctx;                 /**< opaque context for the callbacks       */
+
+    mstp_mgr_counters_t ctr;        /**< diagnostic transition counters         */
 } mstp_mgr_t;
 
 /**

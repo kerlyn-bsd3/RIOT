@@ -123,6 +123,7 @@ typedef struct {
  */
 typedef struct {
     uint32_t frames_ok;       /**< ReceivedValidFrame count                    */
+    uint32_t frames_inv;      /**< ReceivedInvalidFrame count (every invalid())*/
     uint32_t header_crc_err;  /**< BadHeader (CheckHeader failed)              */
     uint32_t data_crc_err;    /**< BadCRC (DATA_CRC / VALIDATE_ENCODED_FIELDS) */
     uint32_t cobs_err;        /**< COBS decode errors                          */

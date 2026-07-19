@@ -83,23 +83,38 @@ int main(void)
         unsigned ring_occ = (unsigned)((dev.ring.head - dev.ring.tail)
                                        & (MSTP_RX_RING_LEN - 1U));
         printf("state=%-16s TS=%u NS=%u PS=%u sole=%d "
-               "TokenCount=%u | rx ok=%lu inv=%lu err=%lu drop=%lu ringq=%u\n",
+               "TokenCount=%u | rx ok=%lu inv=%lu err=%lu drop=%lu txdrop=%lu ringq=%u\n",
                state_name(dev.mgr.state), dev.mgr.ts, dev.mgr.ns, dev.mgr.ps,
                (int)dev.mgr.sole_manager, (unsigned)dev.mgr.token_count,
                (unsigned long)dev.rx.stats.frames_ok,
-               (unsigned long)(dev.rx.stats.header_crc_err + dev.rx.stats.data_crc_err),
+               (unsigned long)dev.rx.stats.frames_inv,
                (unsigned long)dev.rx.stats.receive_error,
-               (unsigned long)dev.ring.dropped, ring_occ);
+               (unsigned long)dev.ring.dropped,
+               (unsigned long)dev.txing_drop, ring_occ);
+
+        /* Manager transition counters — which edges the ring is actually taking.
+         * A sustaining 2-node ring shows recvTok and sendTok climbing together;
+         * a ring that keeps collapsing shows lostTok / findSucc / genTok / PFM
+         * churn instead. */
+        const mstp_mgr_counters_t *c = &dev.mgr.ctr;
+        printf("   xitions: recvTok=%lu sendTok=%lu sawUser=%lu retryTok=%lu "
+               "findSucc=%lu lostTok=%lu genTok=%lu | recvPFM=%lu replyPFM=%lu donesPFM=%lu\n",
+               (unsigned long)c->received_token, (unsigned long)c->send_token,
+               (unsigned long)c->saw_token_user, (unsigned long)c->retry_send_token,
+               (unsigned long)c->find_new_successor, (unsigned long)c->lost_token,
+               (unsigned long)c->generate_token, (unsigned long)c->received_pfm,
+               (unsigned long)c->received_reply_to_pfm, (unsigned long)c->done_with_pfm);
 
         /* Drain the event trace: timestamped RX/TX with the FSM state at each,
          * so we can measure real response latency (poll->reply, token->pass). */
         while (dev.ev_tail != dev.ev_head) {
             const mstp_ev_t *e = &dev.evlog[dev.ev_tail & (MSTP_EVLOG_LEN - 1U)];
-            printf("   %10lu us  %s  ft=%-2u %s=%-3u  [%s]\n",
-                   (unsigned long)e->t_us,
-                   (e->ev == MSTP_EV_RX) ? "RX" : "TX",
-                   (unsigned)e->ft,
-                   (e->ev == MSTP_EV_RX) ? "src" : "dst", (unsigned)e->addr,
+            const char *tag = (e->ev == MSTP_EV_RX)    ? "RX   "
+                            : (e->ev == MSTP_EV_TX)    ? "TX   "
+                            :                            "RXINV";
+            printf("   %10lu us  %s  ft=%-2u src=%-3u dst=%-3u  [%s]\n",
+                   (unsigned long)e->t_us, tag, (unsigned)e->ft,
+                   (unsigned)e->src, (unsigned)e->dst,
                    state_name((mstp_mgr_state_t)e->st));
             dev.ev_tail++;
         }

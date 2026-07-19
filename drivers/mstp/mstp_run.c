@@ -30,8 +30,8 @@
 #define MSTP_TF_RX      (1u << 0)   /**< octet(s) enqueued by the UART ISR       */
 #define MSTP_TF_TICK    (1u << 1)   /**< SilenceTimer / timeout tick             */
 
-/* Diagnostic event trace: record one {RX,TX} event (SPSC; FSM thread produces). */
-static void ev_put(mstp_t *dev, uint8_t ev, uint8_t ft, uint8_t addr)
+/* Diagnostic event trace: record one {RX,TX,RXINV} event (SPSC; FSM thread produces). */
+static void ev_put(mstp_t *dev, uint8_t ev, uint8_t ft, uint8_t src, uint8_t dst)
 {
 #if (MSTP_EVLOG_LEN > 0)
     uint16_t h = dev->ev_head;
@@ -40,10 +40,11 @@ static void ev_put(mstp_t *dev, uint8_t ev, uint8_t ft, uint8_t addr)
     e->ev   = ev;
     e->st   = (uint8_t)dev->mgr.state;
     e->ft   = ft;
-    e->addr = addr;
+    e->src  = src;
+    e->dst  = dst;
     dev->ev_head = h + 1U;
 #else
-    (void)dev; (void)ev; (void)ft; (void)addr;
+    (void)dev; (void)ev; (void)ft; (void)src; (void)dst;
 #endif
 }
 
@@ -85,7 +86,7 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
         ztimer_sleep(ZTIMER_USEC, tturn_us - silence_us);
     }
 
-    ev_put(dev, MSTP_EV_TX, ft, dst);             /* trace: about to transmit   */
+    ev_put(dev, MSTP_EV_TX, ft, src, dst);        /* trace: about to transmit   */
     dev->txing = true;                            /* ignore our own RX echo (9.5.4) */
     gpio_set(dev->params.de_pin);                 /* enable driver (transmit)   */
     uart_write(dev->params.uart, frame, n);
@@ -136,6 +137,7 @@ static void _uart_rx(void *arg, uint8_t data)
      * no overrun results from discarding it.)
      */
     if (dev->txing) {
+        dev->txing_drop++;   /* silent inbound drop — the one path with no CRC/err counter */
         return;
     }
 
@@ -182,7 +184,18 @@ static void *_fsm_thread(void *arg)
         /* trace: a valid frame was delivered to us during this pump */
         if (dev->rx.stats.frames_ok != dev->last_frames_ok) {
             dev->last_frames_ok = dev->rx.stats.frames_ok;
-            ev_put(dev, MSTP_EV_RX, dev->rx.frame.frame_type, dev->rx.frame.source);
+            ev_put(dev, MSTP_EV_RX, dev->rx.frame.frame_type,
+                   dev->rx.frame.source, dev->rx.frame.destination);
+        }
+        /* trace: an invalid frame was seen during this pump. rx.frame is NOT
+         * updated on an invalid frame, so report the raw header (best-effort:
+         * a later frame in the same pump can overwrite header[] before we read
+         * it — good enough to see whether the BDK's post-TX frame is landing as
+         * garbage vs. never arriving at all). */
+        if (dev->rx.stats.frames_inv != dev->last_frames_inv) {
+            dev->last_frames_inv = dev->rx.stats.frames_inv;
+            ev_put(dev, MSTP_EV_RXINV, dev->rx.header[0],
+                   dev->rx.header[2], dev->rx.header[1]);
         }
     }
     return NULL;
@@ -197,6 +210,9 @@ int mstp_start(mstp_t *dev)
     mstp_mgr_init(&dev->mgr, &dev->rx, dev->params.mac_addr, &_port, dev);
     mstp_ring_reset(&dev->ring);
     dev->txing = false;
+    dev->txing_drop = 0;
+    dev->last_frames_ok = 0;
+    dev->last_frames_inv = 0;
     dev->fsm_thread = NULL;
 
     kernel_pid_t pid = thread_create(dev->fsm_stack, sizeof(dev->fsm_stack),

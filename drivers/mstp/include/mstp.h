@@ -70,17 +70,19 @@ extern "C" {
 
 /** Event kinds for @ref mstp_ev_t. */
 enum {
-    MSTP_EV_RX = 1,   /**< a valid frame was delivered to us (addr = source)      */
-    MSTP_EV_TX = 2,   /**< we began transmitting a frame (addr = destination)     */
+    MSTP_EV_RX    = 1, /**< a valid frame was delivered to us                     */
+    MSTP_EV_TX    = 2, /**< we began transmitting a frame                        */
+    MSTP_EV_RXINV = 3, /**< an invalid frame was seen (best-effort header)        */
 };
 
 /** One diagnostic trace record. */
 typedef struct {
     uint32_t t_us;    /**< ztimer_now(ZTIMER_USEC) at the event                   */
-    uint8_t  ev;      /**< MSTP_EV_RX / MSTP_EV_TX                                */
+    uint8_t  ev;      /**< MSTP_EV_RX / MSTP_EV_TX / MSTP_EV_RXINV                */
     uint8_t  st;      /**< Manager FSM state at the event (mstp_mgr_state_t)      */
     uint8_t  ft;      /**< frame type                                            */
-    uint8_t  addr;    /**< RX: source address; TX: destination address           */
+    uint8_t  src;     /**< source address (RX/RXINV: frame src; TX: our TS)       */
+    uint8_t  dst;     /**< destination address                                   */
 } mstp_ev_t;
 
 /**
@@ -108,7 +110,12 @@ typedef struct {
     thread_t         *fsm_thread; /**< FSM thread (target of thread_flags_set)   */
     volatile bool     txing;      /**< true while driving the bus: RX ISR drops
                                        our own half-duplex echo (9.5.4)          */
+    volatile uint32_t txing_drop; /**< octets discarded by the txing guard: the
+                                       ONLY silent inbound-drop path. A peer's
+                                       reply arriving while this is set is lost
+                                       with no error/CRC counter — watch it.     */
     uint32_t          last_ms;    /**< ztimer_now at the previous pump           */
+    uint32_t          last_frames_inv; /**< to detect newly seen invalid frames  */
 
     /* diagnostic event trace (see MSTP_EVLOG_LEN) */
     mstp_ev_t         evlog[MSTP_EVLOG_LEN];
