@@ -47,6 +47,9 @@
 #ifndef MSTP_NETIF_STACKSIZE
 #define MSTP_NETIF_STACKSIZE (THREAD_STACKSIZE_DEFAULT)
 #endif
+#ifndef MSTP_STATUS_PERIOD_MS
+#define MSTP_STATUS_PERIOD_MS (1000U)
+#endif
 
 static mstp_t dev;
 static gnrc_netif_t _netif;
@@ -54,6 +57,96 @@ static char _netif_stack[MSTP_NETIF_STACKSIZE];
 
 /* One MSDU-gather buffer; the netif thread is the sole caller of _l2_send. */
 static uint8_t _msdu[MSTP_MAX_MSDU];
+
+/* Background diagnostic reporter: main() runs the shell, so the status lines
+ * (identical in spirit to the mstp_ring app) print from their own low-priority
+ * thread. The one signal that matters for the ping-reply goal is on the "data:"
+ * line — ind counts pings handed up to RIOT, tx34 counts Type-34 frames we
+ * transmitted. If a ping arrives (ind climbs, IND ft=34 in the trace) and RIOT's
+ * icmpv6_echo formulates a reply, _l2_send -> mstp_tx_ipv6 makes tx34 climb and a
+ * TX ft=34 appears — that is the whole path lighting up end to end. */
+static char _status_stack[THREAD_STACKSIZE_DEFAULT + THREAD_EXTRA_STACKSIZE_PRINTF];
+
+static const char *state_name(mstp_mgr_state_t s)
+{
+    switch (s) {
+        case MSTP_MGR_INITIALIZE:          return "INITIALIZE";
+        case MSTP_MGR_IDLE:                return "IDLE";
+        case MSTP_MGR_USE_TOKEN:           return "USE_TOKEN";
+        case MSTP_MGR_WAIT_FOR_REPLY:      return "WAIT_FOR_REPLY";
+        case MSTP_MGR_DONE_WITH_TOKEN:     return "DONE_WITH_TOKEN";
+        case MSTP_MGR_PASS_TOKEN:          return "PASS_TOKEN";
+        case MSTP_MGR_NO_TOKEN:            return "NO_TOKEN";
+        case MSTP_MGR_POLL_FOR_MANAGER:    return "POLL_FOR_MANAGER";
+        case MSTP_MGR_ANSWER_DATA_REQUEST: return "ANSWER_DATA_REQUEST";
+        default:                           return "?";
+    }
+}
+
+static void *_status_thread(void *arg)
+{
+    (void)arg;
+    while (1) {
+        ztimer_sleep(ZTIMER_MSEC, MSTP_STATUS_PERIOD_MS);
+
+        printf("state=%-16s TS=%u NS=%u PS=%u sole=%d TokenCount=%u\n"
+               "   rx ok=%lu inv=%lu [hdrcrc=%lu abort=%lu(ore=%lu) "
+               "datacrc=%lu cobs=%lu rxerr=%lu] txdrop=%lu\n",
+               state_name(dev.mgr.state), dev.mgr.ts, dev.mgr.ns, dev.mgr.ps,
+               (int)dev.mgr.sole_manager, (unsigned)dev.mgr.token_count,
+               (unsigned long)dev.rx.stats.frames_ok,
+               (unsigned long)dev.rx.stats.frames_inv,
+               (unsigned long)dev.rx.stats.header_crc_err,
+               (unsigned long)dev.rx.stats.frame_abort,
+               (unsigned long)dev.rx.stats.abort_with_ore,
+               (unsigned long)dev.rx.stats.data_crc_err,
+               (unsigned long)dev.rx.stats.cobs_err,
+               (unsigned long)dev.rx.stats.receive_error,
+               (unsigned long)dev.txing_drop);
+
+        /* THE key line for the ping-reply test: ind = pings handed to RIOT,
+         * tx34 = Type-34 frames we transmitted (echo replies once RIOT answers). */
+        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu\n",
+               (unsigned long)dev.rx_ind,
+               (unsigned)dev.rx_ind_last_ft,
+               (unsigned)dev.rx_ind_last_len,
+               (unsigned long)dev.tx_ipv6);
+
+        /* Drain the event trace, skipping routine Token traffic (summarised by
+         * the FSM's own counters); show every RXINV plus any non-Token frame so
+         * the ping (IND/RX ft=34) and our reply (TX ft=34) are visible. */
+        while (dev.ev_tail != dev.ev_head) {
+            const mstp_ev_t *e = &dev.evlog[dev.ev_tail & (MSTP_EVLOG_LEN - 1U)];
+            dev.ev_tail++;
+            if (e->ev != MSTP_EV_RXINV && e->ft == MSTP_FT_TOKEN) {
+                continue;
+            }
+            const char *tag = (e->ev == MSTP_EV_RX)  ? "RX   "
+                            : (e->ev == MSTP_EV_TX)  ? "TX   "
+                            : (e->ev == MSTP_EV_IND) ? "IND  "
+                            :                          "RXINV";
+            if (e->ev == MSTP_EV_RXINV) {
+                printf("   %10lu us  %s  ft=%-2u src=%-3u dst=%-3u  [%s] idx=%u\n",
+                       (unsigned long)e->t_us, tag, (unsigned)e->ft,
+                       (unsigned)e->src, (unsigned)e->dst,
+                       state_name((mstp_mgr_state_t)e->st), (unsigned)e->aux);
+            }
+            else if (e->ev == MSTP_EV_IND) {
+                printf("   %10lu us  %s  ft=%-2u src=%-3u dst=%-3u  [%s] len=%u\n",
+                       (unsigned long)e->t_us, tag, (unsigned)e->ft,
+                       (unsigned)e->src, (unsigned)e->dst,
+                       state_name((mstp_mgr_state_t)e->st), (unsigned)e->aux);
+            }
+            else {
+                printf("   %10lu us  %s  ft=%-2u src=%-3u dst=%-3u  [%s]\n",
+                       (unsigned long)e->t_us, tag, (unsigned)e->ft,
+                       (unsigned)e->src, (unsigned)e->dst,
+                       state_name((mstp_mgr_state_t)e->st));
+            }
+        }
+    }
+    return NULL;
+}
 
 /* ------------------------------------------------------------------------- *
  * gnrc_netif ops — the L2 shim between gnrc and the MS/TP engine.
@@ -164,6 +257,10 @@ int main(void)
         return 1;
     }
     puts("mstp netif up — use 'ifconfig' to see the address; ping from the 6LBR");
+
+    thread_create(_status_stack, sizeof(_status_stack),
+                  THREAD_PRIORITY_MAIN + 1, 0,
+                  _status_thread, NULL, "mstp_status");
 
     char line[SHELL_DEFAULT_BUFSIZE];
     shell_run(NULL, line, sizeof(line));
