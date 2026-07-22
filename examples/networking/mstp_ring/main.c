@@ -193,6 +193,17 @@ int main(void)
                (unsigned long)c->generate_token, (unsigned long)c->received_pfm,
                (unsigned long)c->received_reply_to_pfm, (unsigned long)c->done_with_pfm);
 
+        /* Data indications: a ping relayed onto the ring arrives as a Frame Type
+         * 34 addressed to us; the RX FSM COBS/CRC-32K-decodes it and indicates it
+         * up. If this stays 0 while pings are being sent, either the frame isn't
+         * reaching us (check Wireshark: is it on the bus, dst = our TS?) or it's
+         * failing to decode (watch datacrc/cobs above and RXINV ft=34 below). */
+        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu\n",
+               (unsigned long)dev.rx_ind,
+               (unsigned)dev.rx_ind_last_ft,
+               (unsigned)dev.rx_ind_last_len,
+               (unsigned long)dev.tx_ipv6);
+
         /* Drain the event trace: timestamped RX/TX with the FSM state at each,
          * so we can measure real response latency (poll->reply, token->pass). */
         while (dev.ev_tail != dev.ev_head) {
@@ -210,9 +221,16 @@ int main(void)
             }
             const char *tag = (e->ev == MSTP_EV_RX)    ? "RX   "
                             : (e->ev == MSTP_EV_TX)    ? "TX   "
+                            : (e->ev == MSTP_EV_IND)   ? "IND  "
                             :                            "RXINV";
             if (e->ev == MSTP_EV_RXINV) {
                 printf("   %10lu us  %s  ft=%-2u src=%-3u dst=%-3u  [%s] idx=%u\n",
+                       (unsigned long)e->t_us, tag, (unsigned)e->ft,
+                       (unsigned)e->src, (unsigned)e->dst,
+                       state_name((mstp_mgr_state_t)e->st), (unsigned)e->aux);
+            }
+            else if (e->ev == MSTP_EV_IND) {
+                printf("   %10lu us  %s  ft=%-2u src=%-3u dst=%-3u  [%s] len=%u\n",
                        (unsigned long)e->t_us, tag, (unsigned)e->ft,
                        (unsigned)e->src, (unsigned)e->dst,
                        state_name((mstp_mgr_state_t)e->st), (unsigned)e->aux);

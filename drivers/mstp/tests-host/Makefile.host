@@ -7,10 +7,11 @@
 CC       ?= cc
 CFLAGS   ?= -std=c11 -Wall -Wextra -O2
 INCLUDES := -I../include
-COMMON   := ../mstp_mgr.c ../mstp_fsm.c ../mstp_link.c ../mstp_crc.c ../mstp_cobs.c
+COMMON   := ../mstp_mgr.c ../mstp_fsm.c ../mstp_link.c ../mstp_crc.c ../mstp_cobs.c \
+            ../mstp_frame.c
 
 .PHONY: all check clean
-all: test_mstp_mgr test_mstp_link
+all: test_mstp_mgr test_mstp_link test_mstp_frame
 
 test_mstp_mgr: test_mstp_mgr.c $(COMMON)
 	$(CC) $(CFLAGS) $(INCLUDES) test_mstp_mgr.c $(COMMON) -o $@
@@ -18,8 +19,11 @@ test_mstp_mgr: test_mstp_mgr.c $(COMMON)
 test_mstp_link: test_mstp_link.c $(COMMON)
 	$(CC) $(CFLAGS) $(INCLUDES) test_mstp_link.c $(COMMON) -o $@
 
+test_mstp_frame: test_mstp_frame.c $(COMMON)
+	$(CC) $(CFLAGS) $(INCLUDES) test_mstp_frame.c $(COMMON) -o $@
+
 check: all
-	./test_mstp_mgr && ./test_mstp_link
+	./test_mstp_mgr && ./test_mstp_link && ./test_mstp_frame
 
 clean:
-	$(RM) test_mstp_mgr test_mstp_link
+	$(RM) test_mstp_mgr test_mstp_link test_mstp_frame

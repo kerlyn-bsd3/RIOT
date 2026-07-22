@@ -14,6 +14,9 @@
  * Receive-FSM ↔ Manager-FSM shared state race-free without any critical section.
  */
 
+#include <errno.h>
+#include <string.h>
+
 #include "mstp.h"
 
 #include "periph/uart.h"
@@ -69,15 +72,20 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
     }
     else {
         /*
-         * COBS-encoded data frame (SendCOBS_EncodedFrame, 9.5.5.2) — TODO: build
-         * with mstp_build_ipv6_frame() once mstp_frame.* is migrated into the
-         * driver (PORTING.md / Session 8 gap #2). Unreachable during token-
-         * passing bring-up: the port's next_tx is NULL, so the manager never
-         * leaves USE_TOKEN via a data send.
+         * COBS-encoded data frame (SendCOBS_EncodedFrame, 9.5.5.2). @p data is the
+         * raw MSDU; mstp_build_ipv6_frame() does COBS + CRC-32K + header into the
+         * device TX buffer (on the F767 we build the whole frame in RAM rather than
+         * streaming it out of the UART as the AVR reference does). We only reach
+         * here as Frame Type 34 (the port's next_tx queues nothing else).
          */
-        DEBUG("mstp: data-frame TX not wired yet (ft=%u dst=%u len=%u)\n",
-              (unsigned)ft, (unsigned)dst, (unsigned)len);
-        return;
+        n = mstp_build_ipv6_frame(src, dst, data, len, dev->tx_buf, sizeof(dev->tx_buf));
+        if (n == 0U) {
+            DEBUG("mstp: ipv6 frame build failed (dst=%u len=%u)\n",
+                  (unsigned)dst, (unsigned)len);
+            return;
+        }
+        frame = dev->tx_buf;
+        dev->tx_ipv6++;
     }
 
     /* 9.5.5(1): if SilenceTimer < Tturnaround (40 bit times), wait the balance.
@@ -117,10 +125,63 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
     dev->rx.silence_timer = 0;                    /* 9.5.5: cleared per octet TX */
 }
 
+/* ------------------------------------------------------------------------- *
+ * Indication — 135-2024 9.5.6.2 ReceivedDataNoReply (and 9.5.6.4 ReceivedReply):
+ * a data frame addressed to us (or broadcast) was received and, for Frame Type 34,
+ * COBS + CRC-32K decoded to @p data / @p len. RX-first bring-up: we don't hand it
+ * to a higher layer yet — just record it and its decoded MSDU length so a ping
+ * relayed onto the ring as a Type-34 becomes visible on the console. The bad
+ * (didn't-decode) case surfaces separately as RXINV with ft=34 plus the
+ * datacrc/cobs counters.
+ * ------------------------------------------------------------------------- */
+static void _indicate(void *ctx, uint8_t ft, uint8_t src,
+                      const uint8_t *data, uint16_t len)
+{
+    mstp_t *dev = ctx;
+    dev->rx_ind++;
+    dev->rx_ind_last_ft  = ft;
+    dev->rx_ind_last_len = len;
+    ev_put(dev, MSTP_EV_IND, ft, src, dev->mgr.ts, len);   /* aux = MSDU length */
+
+    /* Hand the MSDU up to the netdev/gnrc side, if attached (event_callback set by
+     * netdev_register). One-slot queue: drop if the previous frame hasn't been
+     * drained by _recv() yet. Standalone diagnostic app has no callback -> skipped. */
+    if (dev->netdev.event_callback != NULL && data != NULL &&
+        len <= MSTP_MAX_MSDU && !dev->rx_ready) {
+        memcpy(dev->rx_data, data, len);
+        dev->rx_data_len = len;
+        dev->rx_data_src = src;
+        dev->rx_ready    = true;
+        netdev_trigger_event_isr(&dev->netdev);
+    }
+}
+
+/* ------------------------------------------------------------------------- *
+ * next_tx — 135-2024 9.5.6.3 USE_TOKEN: hand the manager the next queued frame
+ * to transmit. Frame Type 34 is no-reply data, so the manager takes the
+ * SendNoWait path (send_frame -> DONE_WITH_TOKEN). Returns false (NothingToSend)
+ * when the one-slot TX queue is empty. Called only from the FSM thread, only
+ * while we hold the token — that's how gnrc's "send whenever" becomes MS/TP's
+ * "send when it's your turn".
+ * ------------------------------------------------------------------------- */
+static bool _next_tx(void *ctx, mstp_tx_frame_t *out)
+{
+    mstp_t *dev = ctx;
+    if (!dev->tx_pending) {
+        return false;
+    }
+    out->frame_type = MSTP_FRAME_TYPE_IPV6;
+    out->dst        = dev->tx_dst;
+    out->data       = dev->tx_msdu;
+    out->len        = dev->tx_len;
+    dev->tx_pending = false;   /* dequeued; handed to send_frame in this same step */
+    return true;
+}
+
 static const mstp_mgr_port_t _port = {
     .send_frame = _send_frame,
-    .indicate   = NULL,   /* token-passing bring-up: no higher layer wired yet  */
-    .next_tx    = NULL,   /* nothing queued -> USE_TOKEN NothingToSend           */
+    .indicate   = _indicate, /* log received data frames (Type 34 etc.) — RX-first */
+    .next_tx    = _next_tx,   /* dequeue a queued IPv6 MSDU when we hold the token  */
     .get_reply  = NULL,   /* no immediate reply -> ANSWER_DATA_REQUEST defers    */
 };
 
@@ -227,6 +288,14 @@ int mstp_start(mstp_t *dev)
     dev->txing_drop = 0;
     dev->last_frames_ok = 0;
     dev->last_frames_inv = 0;
+    dev->rx_ind = 0;
+    dev->rx_ind_last_len = 0;
+    dev->rx_ind_last_ft = 0;
+    dev->tx_pending = false;
+    dev->tx_len = 0;
+    dev->tx_ipv6 = 0;
+    dev->rx_ready = false;
+    dev->rx_data_len = 0;
     dev->fsm_thread = NULL;
 
     kernel_pid_t pid = thread_create(dev->fsm_stack, sizeof(dev->fsm_stack),
@@ -247,5 +316,23 @@ int mstp_start(mstp_t *dev)
 
     ztimer_periodic_init(ZTIMER_MSEC, &dev->tick, _tick, dev, MSTP_TICK_MS);
     ztimer_periodic_start(&dev->tick);
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Public: queue a raw IPv6 MSDU for transmission as a Frame Type 34.
+ * ------------------------------------------------------------------------- */
+int mstp_tx_ipv6(mstp_t *dev, uint8_t dst, const uint8_t *msdu, uint16_t len)
+{
+    if (len == 0U || len > MSTP_MAX_MSDU) {
+        return -EMSGSIZE;
+    }
+    if (dev->tx_pending) {
+        return -EBUSY;   /* one-slot queue: the manager hasn't sent the last yet */
+    }
+    memcpy(dev->tx_msdu, msdu, len);
+    dev->tx_dst     = dst;
+    dev->tx_len     = len;
+    dev->tx_pending = true;   /* the FSM thread's next USE_TOKEN transmits it */
     return 0;
 }

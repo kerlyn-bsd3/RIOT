@@ -35,6 +35,7 @@
 #include "mstp_fsm.h"
 #include "mstp_mgr.h"
 #include "mstp_link.h"
+#include "mstp_frame.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,6 +74,7 @@ enum {
     MSTP_EV_RX    = 1, /**< a valid frame was delivered to us                     */
     MSTP_EV_TX    = 2, /**< we began transmitting a frame                        */
     MSTP_EV_RXINV = 3, /**< an invalid frame was seen (best-effort header)        */
+    MSTP_EV_IND   = 4, /**< a data frame was indicated up (aux = decoded MSDU len) */
 };
 
 /** One diagnostic trace record. */
@@ -138,6 +140,33 @@ typedef struct {
     uint16_t          ev_tail;    /**< consumer index (reporting/main thread)    */
     uint32_t          last_frames_ok; /**< to detect newly delivered RX frames    */
 
+    /* Higher-layer data indications (9.5.6.2 ReceivedDataNoReply). RX-first
+     * bring-up: not handed to a stack yet — just counted/traced so a ping relayed
+     * onto the ring as a Frame Type 34 is visible on the console. */
+    uint32_t          rx_ind;         /**< count of data frames indicated up       */
+    uint16_t          rx_ind_last_len;/**< decoded MSDU length of the last one      */
+    uint8_t           rx_ind_last_ft; /**< frame type of the last one (34 = IPv6)  */
+
+    /* One-slot TX queue for outbound IPv6 (Frame Type 34). mstp_tx_ipv6() (called
+     * by the netdev _send, or directly for bring-up) copies the raw MSDU here; the
+     * Manager FSM's next_tx dequeues and the SendFrame port transmits it as a
+     * Type-34 ONLY while this node holds the token (9.5.6.3 USE_TOKEN). */
+    volatile bool     tx_pending;     /**< an MSDU is queued for transmission       */
+    uint8_t           tx_dst;         /**< its destination MS/TP address            */
+    uint16_t          tx_len;         /**< its length                               */
+    uint8_t           tx_msdu[MSTP_MAX_MSDU];                     /**< staged MSDU   */
+    uint8_t           tx_buf[MSTP_IPV6_FRAME_MAX(MSTP_MAX_MSDU)]; /**< built frame   */
+    uint32_t          tx_ipv6;        /**< count of Type-34 data frames transmitted */
+
+    /* One-slot RX hand-off from the FSM thread to the netdev/gnrc side. indicate()
+     * copies the decoded MSDU here and raises NETDEV_EVENT_ISR; the netif thread's
+     * _recv() drains it. Only exercised when a netdev event_callback is registered
+     * (gnrc attached) — a no-op in the standalone diagnostic app. */
+    uint8_t           rx_data[MSTP_MAX_MSDU];
+    uint16_t          rx_data_len;
+    uint8_t           rx_data_src;
+    volatile bool     rx_ready;
+
     char              fsm_stack[MSTP_THREAD_STACKSIZE];
 } mstp_t;
 
@@ -165,6 +194,22 @@ void mstp_setup(mstp_t *dev, const mstp_params_t *params, uint8_t index);
  * @return 0 on success, negative on error
  */
 int mstp_start(mstp_t *dev);
+
+/**
+ * @brief   Queue a raw IPv6 MSDU for transmission as a Frame Type 34 (9.5.5.2).
+ *
+ * Copies @p msdu into the device's one-slot TX queue; the Manager FSM COBS +
+ * CRC-32K encodes and transmits it the next time this node holds the token. This
+ * is the hook the netdev @c _send() will call; usable directly for bring-up/tests.
+ *
+ * @param[in,out] dev   device descriptor
+ * @param[in]     dst    destination MS/TP address (255 = broadcast)
+ * @param[in]     msdu   raw MSDU (IPv6 packet / 6LoBAC payload)
+ * @param[in]     len    MSDU length (1..MSTP_MAX_MSDU)
+ * @return 0 on success, -EBUSY if a frame is already queued, -EMSGSIZE if @p len
+ *         is 0 or exceeds MSTP_MAX_MSDU.
+ */
+int mstp_tx_ipv6(mstp_t *dev, uint8_t dst, const uint8_t *msdu, uint16_t len);
 
 #ifdef __cplusplus
 }
