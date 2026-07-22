@@ -11,6 +11,8 @@ QUIET ?= 1
 # the Type-34 TX enqueue (mstp_tx_ipv6). Pulls periph_uart/gpio + ztimer via its
 # own Makefile.dep.
 USEMODULE += mstp
+# iolist_to_buffer() gathers the gnrc pktsnip chain into our MSDU staging buffer.
+USEMODULE += iolist
 
 # gnrc 6LoWPAN / IPv6 stack. The netif is created manually in main.c (custom L2
 # ops), so we do NOT use auto_init_gnrc_netif / gnrc_netdev_default.
