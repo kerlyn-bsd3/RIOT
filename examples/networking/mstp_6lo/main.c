@@ -72,6 +72,16 @@
 #ifndef MSTP_STATUS_PERIOD_MS
 #define MSTP_STATUS_PERIOD_MS (1000U)
 #endif
+/*
+ * Nmax_manager (Max_Manager, 9.5.3): highest manager address this node polls for
+ * a successor. The default is 127 — with the ring partners quiet, POLL_FOR_MANAGER
+ * then sweeps PS across the entire 0..127 space (dst=4..56.. seen in the trace),
+ * so the node never settles or takes the token, and a queued Type-34 reply can
+ * never be sent. This test bed is nodes 1..8, so bound the sweep to 8.
+ */
+#ifndef MSTP_NMAX_MANAGER
+#define MSTP_NMAX_MANAGER   (8U)
+#endif
 
 static mstp_t dev;
 static gnrc_netif_t _netif;
@@ -288,6 +298,15 @@ int main(void)
     NVIC_SetPriority(MSTP_UART_IRQN, MSTP_UART_IRQ_PRIO);
     printf("UART RX IRQ (#%d) priority set to %u\n",
            (int)MSTP_UART_IRQN, (unsigned)MSTP_UART_IRQ_PRIO);
+
+    /* Bound the successor sweep to the 8-node bed. mstp_start() (run inside
+     * gnrc_netif_create above) already called mstp_mgr_init(), which set
+     * nmax_manager to the 127 default; override it now, preserving the
+     * nmax_info_frames the init established. The FSM thread reads nmax_manager
+     * each step, so this takes effect on the next poll. */
+    mstp_mgr_set_limits(&dev.mgr, MSTP_NMAX_MANAGER, dev.mgr.nmax_info_frames);
+    printf("Nmax_manager=%u Nmax_info_frames=%u\n",
+           (unsigned)dev.mgr.nmax_manager, (unsigned)dev.mgr.nmax_info_frames);
 
     puts("mstp netif up — use 'ifconfig' to see the address; ping from the 6LBR");
 
