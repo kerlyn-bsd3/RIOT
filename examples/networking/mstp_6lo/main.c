@@ -41,6 +41,28 @@
 #ifndef MSTP_SRC_ADDR
 #define MSTP_SRC_ADDR       (0x03U)
 #endif
+/*
+ * Board-specific receive-overrun handling, identical to the mstp_ring app:
+ * USART6 == UART_DEV(1) on the nucleo-f767zi. RIOT's periph_uart hides overruns
+ * from the rx callback, so we hand the driver the USART status register + ORE
+ * bit for visibility, and (below, after uart_init) raise the RX IRQ to the
+ * highest priority so a same-priority ISR cannot delay it past one char-time
+ * (~87us @115200) — the fix that took overruns from 95% to 0.25% in Session 18.
+ * Without it, the extra gnrc/6lowpan/ipv6 threads push loss to ~100% (rx ok=0,
+ * every frame failing the header CRC on a misaligned octet stream).
+ */
+#ifndef MSTP_ORE_SR
+#define MSTP_ORE_SR         (&USART6->ISR)
+#endif
+#ifndef MSTP_ORE_MASK
+#define MSTP_ORE_MASK       (USART_ISR_ORE)
+#endif
+#ifndef MSTP_UART_IRQN
+#define MSTP_UART_IRQN      USART6_IRQn
+#endif
+#ifndef MSTP_UART_IRQ_PRIO
+#define MSTP_UART_IRQ_PRIO  (0U)
+#endif
 #ifndef MSTP_NETIF_PRIO
 #define MSTP_NETIF_PRIO     (GNRC_NETIF_PRIO)
 #endif
@@ -246,6 +268,8 @@ int main(void)
         .baud     = MSTP_BAUD,
         .de_pin   = MSTP_DE_PIN,
         .mac_addr = MSTP_SRC_ADDR,
+        .ore_sr   = MSTP_ORE_SR,
+        .ore_mask = MSTP_ORE_MASK,
     };
     mstp_setup(&dev, &params, 0);
 
@@ -256,6 +280,15 @@ int main(void)
         printf("FATAL: gnrc_netif_create failed (%d)\n", res);
         return 1;
     }
+
+    /* gnrc_netif_create() ran the (higher-priority) netif thread's init ==
+     * mstp_start() == uart_init() to completion before returning here, so the
+     * vector is live; raise its priority above other peripheral ISRs. See the
+     * note at MSTP_UART_IRQ_PRIO — this is the overrun fix from the ring app. */
+    NVIC_SetPriority(MSTP_UART_IRQN, MSTP_UART_IRQ_PRIO);
+    printf("UART RX IRQ (#%d) priority set to %u\n",
+           (int)MSTP_UART_IRQN, (unsigned)MSTP_UART_IRQ_PRIO);
+
     puts("mstp netif up — use 'ifconfig' to see the address; ping from the 6LBR");
 
     thread_create(_status_stack, sizeof(_status_stack),
