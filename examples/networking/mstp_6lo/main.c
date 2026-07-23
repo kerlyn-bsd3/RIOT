@@ -115,11 +115,28 @@ static const char *state_name(mstp_mgr_state_t s)
     }
 }
 
+/* Toggle for the status reporter so the shell is usable during interactive
+ * tests (ifconfig / nib / ping). Type `status` to silence it, `status` to
+ * restore. The thread keeps its 1 s cadence; it just skips the prints. */
+static volatile bool _status_on = true;
+
+static int _cmd_status(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    _status_on = !_status_on;
+    printf("mstp status %s\n", _status_on ? "on" : "off");
+    return 0;
+}
+SHELL_COMMAND(status, "toggle the periodic mstp status printing", _cmd_status);
+
 static void *_status_thread(void *arg)
 {
     (void)arg;
     while (1) {
         ztimer_sleep(ZTIMER_MSEC, MSTP_STATUS_PERIOD_MS);
+        if (!_status_on) {
+            continue;
+        }
 
         printf("state=%-16s TS=%u NS=%u PS=%u sole=%d TokenCount=%u\n"
                "   rx ok=%lu inv=%lu [hdrcrc=%lu abort=%lu(ore=%lu) "
