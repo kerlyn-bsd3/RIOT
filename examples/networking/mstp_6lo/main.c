@@ -63,6 +63,17 @@
 #ifndef MSTP_UART_IRQ_PRIO
 #define MSTP_UART_IRQ_PRIO  (0U)
 #endif
+/*
+ * The console (stdio) UART is UART_DEV(0) == USART3 on the nucleo-f767zi. It
+ * shares interrupt bandwidth with the priority-0 MS/TP UART (USART6); left at its
+ * default (lower) priority, continuous ring traffic preempts console RX and drops
+ * typed characters (echoed, but lost internally). Raise it to the SAME priority so
+ * the two short UART ISRs don't preempt each other, while both still beat the
+ * slower peripheral ISRs that caused the original MS/TP overruns.
+ */
+#ifndef MSTP_CONSOLE_IRQN
+#define MSTP_CONSOLE_IRQN   USART3_IRQn
+#endif
 #ifndef MSTP_NETIF_PRIO
 #define MSTP_NETIF_PRIO     (GNRC_NETIF_PRIO)
 #endif
@@ -313,8 +324,11 @@ int main(void)
      * vector is live; raise its priority above other peripheral ISRs. See the
      * note at MSTP_UART_IRQ_PRIO — this is the overrun fix from the ring app. */
     NVIC_SetPriority(MSTP_UART_IRQN, MSTP_UART_IRQ_PRIO);
-    printf("UART RX IRQ (#%d) priority set to %u\n",
-           (int)MSTP_UART_IRQN, (unsigned)MSTP_UART_IRQ_PRIO);
+    /* Peer the console UART so it isn't starved by MS/TP (keeps typed chars). */
+    NVIC_SetPriority(MSTP_CONSOLE_IRQN, MSTP_UART_IRQ_PRIO);
+    printf("UART RX IRQ (#%d) priority set to %u; console IRQ (#%d) matched\n",
+           (int)MSTP_UART_IRQN, (unsigned)MSTP_UART_IRQ_PRIO,
+           (int)MSTP_CONSOLE_IRQN);
 
     /* Bound the successor sweep to the 8-node bed. mstp_start() (run inside
      * gnrc_netif_create above) already called mstp_mgr_init(), which set
