@@ -26,6 +26,8 @@ USEMODULE += shell
 USEMODULE += shell_cmds_default
 USEMODULE += ps
 USEMODULE += gnrc_pktdump
+# nib shell command (nib prefix / neigh / route) for ND diagnostics
+USEMODULE += shell_cmd_gnrc_ipv6_nib
 
 # ztimer backends used by the driver
 USEMODULE += ztimer
