@@ -118,7 +118,7 @@ static const char *state_name(mstp_mgr_state_t s)
 /* Toggle for the status reporter so the shell is usable during interactive
  * tests (ifconfig / nib / ping). Type `status` to silence it, `status` to
  * restore. The thread keeps its 1 s cadence; it just skips the prints. */
-static volatile bool _status_on = true;
+static volatile bool _status_on = false;
 
 static int _cmd_status(int argc, char **argv)
 {
@@ -326,6 +326,7 @@ int main(void)
            (unsigned)dev.mgr.nmax_manager, (unsigned)dev.mgr.nmax_info_frames);
 
     puts("mstp netif up — use 'ifconfig' to see the address; ping from the 6LBR");
+    puts("status printing is OFF; type 'status' to toggle the periodic report on");
 
     thread_create(_status_stack, sizeof(_status_stack),
                   THREAD_PRIORITY_MAIN + 1, 0,
