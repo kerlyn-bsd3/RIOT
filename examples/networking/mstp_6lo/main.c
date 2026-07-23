@@ -325,6 +325,18 @@ int main(void)
     printf("Nmax_manager=%u Nmax_info_frames=%u\n",
            (unsigned)dev.mgr.nmax_manager, (unsigned)dev.mgr.nmax_info_frames);
 
+    /* gnrc auto-configures the IPv6 link-local address and starts 6LoWPAN-ND
+     * (Router Solicitation, address registration) only on NETDEV_EVENT_LINK_UP;
+     * there is no init-time fallback (gnrc_netif.c: NETDEV_EVENT_LINK_UP ->
+     * GNRC_IPV6_NIB_IFACE_UP). Our netdev has no PHY link to report, but the
+     * MS/TP link is up as soon as the engine runs, and gnrc_netif_create() above
+     * has fully initialised + registered the interface — so raise it once now.
+     * Without this, ifconfig shows no inet6 address at all. */
+    if (dev.netdev.event_callback != NULL) {
+        dev.netdev.event_callback(&dev.netdev, NETDEV_EVENT_LINK_UP);
+        puts("signalled LINK_UP -> link-local + Router Solicitation");
+    }
+
     puts("mstp netif up — use 'ifconfig' to see the address; ping from the 6LBR");
     puts("status printing is OFF; type 'status' to toggle the periodic report on");
 
