@@ -110,7 +110,24 @@ typedef struct {
      */
     volatile const uint32_t *ore_sr;  /**< USART status reg (e.g. &USARTx->ISR); NULL = off */
     uint32_t ore_mask;                /**< ORE bit within *ore_sr (e.g. USART_ISR_ORE)       */
+
+    /*
+     * Trailing pad octets (0xFF) appended to every transmitted frame, contiguous in
+     * the SAME uart_write(). MS/TP permits trailing pad and a receiver ignores a
+     * stray 0xFF in IDLE (preamble is 0x55 0xFF). On a UART whose blocking write
+     * completes at the end of the last DATA bit — before the stop bit (nRF UARTE
+     * ENDTX) — releasing DE right after the write clips that stop bit; a pad octet
+     * makes the clipped bit belong to the discardable pad, not the frame's CRC octet
+     * (fully framed before the pad). 0 = off (STM32 uart_write() waits for TC).
+     * Clamped to MSTP_TX_PAD_MAX.
+     */
+    uint8_t  tx_pad_octets;
 } mstp_params_t;
+
+/** @brief Max trailing pad octets appendable per frame (mstp_params_t::tx_pad_octets). */
+#ifndef MSTP_TX_PAD_MAX
+#define MSTP_TX_PAD_MAX         (2U)
+#endif
 
 /**
  * @brief   Device descriptor for an MS/TP interface.
@@ -155,7 +172,7 @@ typedef struct {
     uint8_t           tx_dst;         /**< its destination MS/TP address            */
     uint16_t          tx_len;         /**< its length                               */
     uint8_t           tx_msdu[MSTP_MAX_MSDU];                     /**< staged MSDU   */
-    uint8_t           tx_buf[MSTP_IPV6_FRAME_MAX(MSTP_MAX_MSDU)]; /**< built frame   */
+    uint8_t           tx_buf[MSTP_IPV6_FRAME_MAX(MSTP_MAX_MSDU) + MSTP_TX_PAD_MAX]; /**< built frame + pad */
     uint32_t          tx_ipv6;        /**< count of Type-34 data frames transmitted */
 
     /* One-slot RX hand-off from the FSM thread to the netdev/gnrc side. indicate()

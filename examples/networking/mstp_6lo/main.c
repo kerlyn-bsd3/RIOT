@@ -28,51 +28,66 @@
 
 #include "mstp.h"
 
-/* USART6 == UART_DEV(1) on nucleo-f767zi; DE = D2 = PF15; TS = 3. */
-#ifndef MSTP_UART_DEV
-#define MSTP_UART_DEV       UART_DEV(1)
-#endif
+/* ------------------------------------------------------------------------- *
+ * Configuration. The mstp driver is board-agnostic; only the values below differ
+ * per board (MS/TP UART, RS-485 DE GPIO, and board TX/RX quirks). Selected on the
+ * RIOT-provided BOARD_<name> macro.
+ * ------------------------------------------------------------------------- */
 #ifndef MSTP_BAUD
-#define MSTP_BAUD           (115200U)
-#endif
-#ifndef MSTP_DE_PIN
-#define MSTP_DE_PIN         GPIO_PIN(PORT_F, 15)
+#define MSTP_BAUD           (115200U)      /* bus baud both ends agree on */
 #endif
 #ifndef MSTP_SRC_ADDR
-#define MSTP_SRC_ADDR       (0x03U)
+#define MSTP_SRC_ADDR       (0x03U)        /* This Station; must be <= Nmax_manager (3..7) */
 #endif
+
+#if defined(BOARD_NRF52840DK)
 /*
- * Board-specific receive-overrun handling, identical to the mstp_ring app:
- * USART6 == UART_DEV(1) on the nucleo-f767zi. RIOT's periph_uart hides overruns
- * from the rx callback, so we hand the driver the USART status register + ORE
- * bit for visibility, and (below, after uart_init) raise the RX IRQ to the
- * highest priority so a same-priority ISR cannot delay it past one char-time
- * (~87us @115200) — the fix that took overruns from 95% to 0.25% in Session 18.
- * Without it, the extra gnrc/6lowpan/ipv6 threads push loss to ~100% (rx ok=0,
- * every frame failing the header CRC on a misaligned octet stream).
+ * nRF52840-DK: RIOT already maps UART_DEV(1) = UARTE1 to the Arduino header D0/D1
+ * (P1.01 rx / P1.02 tx) — where the DFR0259 shield's UART sits — and the DE line
+ * is Arduino D2 = P1.03. RX is EasyDMA-driven (no 1-deep RDR to overrun), so there
+ * is no ORE status register, no NVIC RX-priority bump, and no USART FIFO. TX is DMA
+ * too: RIOT's blocking uart_write() returns at ENDTX — the end of the last data
+ * bit, before the stop bit — so we append a trailing pad octet (tx_pad_octets) so
+ * the clipped stop bit belongs to the discardable pad, not the CRC; see mstp_run.c.
  */
-#ifndef MSTP_ORE_SR
+#define MSTP_BOARD_NAME     "nrf52840dk"
+#define MSTP_UART_DEV       UART_DEV(1)
+#define MSTP_DE_PIN         GPIO_PIN(1, 3)        /* Arduino D2 = P1.03 */
+#define MSTP_TX_PAD_OCTETS  (1U)             /* one 0xFF pad; ENDTX fires pre-stop-bit */
+
+#elif defined(BOARD_NUCLEO_F767ZI)
+/*
+ * Nucleo-F767ZI: USART6 = UART_DEV(1) on Arduino D0/D1 (PG9/PG14), DE = D2 = PF15.
+ * The STM32F7 USART has no RX FIFO and RIOT reads one byte per interrupt, so we
+ * (a) hand the driver the USART status register + ORE mask for overrun visibility,
+ * and (b) raise the MS/TP and console RX IRQs to priority 0 (below, after
+ * uart_init) so a same-priority ISR can't delay them past one char-time. TX:
+ * uart_write() blocks to TC (line idle), so no trailing pad is needed.
+ */
+#define MSTP_BOARD_NAME     "nucleo-f767zi"
+#define MSTP_UART_DEV       UART_DEV(1)
+#define MSTP_DE_PIN         GPIO_PIN(PORT_F, 15)  /* Arduino D2 = PF15 */
+#define MSTP_TX_PAD_OCTETS  (0U)             /* uart_write blocks to TC; no pad needed */
 #define MSTP_ORE_SR         (&USART6->ISR)
+#define MSTP_ORE_MASK       (USART_ISR_ORE)
+#define MSTP_UART_IRQN      USART6_IRQn
+#define MSTP_CONSOLE_IRQN   USART3_IRQn           /* stdio = UART_DEV(0) */
+#define MSTP_UART_IRQ_PRIO  (0U)
+#define MSTP_STM32_IRQ_PRIO 1                     /* compile the NVIC-priority block in main() */
+
+#else
+#error "mstp_6lo: unsupported BOARD - add a board-config block (MS/TP UART, DE pin, quirks)"
+#endif
+
+/* Common defaults (a board block above may already define MSTP_ORE_* / pad). */
+#ifndef MSTP_ORE_SR
+#define MSTP_ORE_SR         (NULL)        /* no overrun-register peek (e.g. nRF EasyDMA) */
 #endif
 #ifndef MSTP_ORE_MASK
-#define MSTP_ORE_MASK       (USART_ISR_ORE)
+#define MSTP_ORE_MASK       (0U)
 #endif
-#ifndef MSTP_UART_IRQN
-#define MSTP_UART_IRQN      USART6_IRQn
-#endif
-#ifndef MSTP_UART_IRQ_PRIO
-#define MSTP_UART_IRQ_PRIO  (0U)
-#endif
-/*
- * The console (stdio) UART is UART_DEV(0) == USART3 on the nucleo-f767zi. It
- * shares interrupt bandwidth with the priority-0 MS/TP UART (USART6); left at its
- * default (lower) priority, continuous ring traffic preempts console RX and drops
- * typed characters (echoed, but lost internally). Raise it to the SAME priority so
- * the two short UART ISRs don't preempt each other, while both still beat the
- * slower peripheral ISRs that caused the original MS/TP overruns.
- */
-#ifndef MSTP_CONSOLE_IRQN
-#define MSTP_CONSOLE_IRQN   USART3_IRQn
+#ifndef MSTP_TX_PAD_OCTETS
+#define MSTP_TX_PAD_OCTETS  (0U)
 #endif
 #ifndef MSTP_NETIF_PRIO
 #define MSTP_NETIF_PRIO     (GNRC_NETIF_PRIO)
@@ -84,11 +99,9 @@
 #define MSTP_STATUS_PERIOD_MS (1000U)
 #endif
 /*
- * Nmax_manager (Max_Manager, 9.5.3): highest manager address this node polls for
- * a successor. The default is 127 — with the ring partners quiet, POLL_FOR_MANAGER
- * then sweeps PS across the entire 0..127 space (dst=4..56.. seen in the trace),
- * so the node never settles or takes the token, and a queued Type-34 reply can
- * never be sent. This test bed is nodes 1..8, so bound the sweep to 8.
+ * Nmax_manager (Max_Manager, 9.5.3): highest manager address polled for a
+ * successor. Bound to the small test bed so POLL_FOR_MANAGER doesn't sweep the
+ * whole 0..127 space; This Station (MSTP_SRC_ADDR) must be <= this.
  */
 #ifndef MSTP_NMAX_MANAGER
 #define MSTP_NMAX_MANAGER   (8U)
@@ -297,9 +310,10 @@ static const gnrc_netif_ops_t _mstp_netif_ops = {
 
 int main(void)
 {
-    puts("\n6LoBAC: IPv6-over-MS/TP (RFC 8163) on nucleo-f767zi");
-    printf("UART=%u baud=%lu DE=PF15 TS=%u\n",
-           (unsigned)MSTP_UART_DEV, (unsigned long)MSTP_BAUD, MSTP_SRC_ADDR);
+    printf("\n6LoBAC: IPv6-over-MS/TP (RFC 8163) on %s\n", MSTP_BOARD_NAME);
+    printf("UART=%u baud=%lu TS=%u pad=%u\n",
+           (unsigned)MSTP_UART_DEV, (unsigned long)MSTP_BAUD, MSTP_SRC_ADDR,
+           (unsigned)MSTP_TX_PAD_OCTETS);
 
     const mstp_params_t params = {
         .uart     = MSTP_UART_DEV,
@@ -308,6 +322,7 @@ int main(void)
         .mac_addr = MSTP_SRC_ADDR,
         .ore_sr   = MSTP_ORE_SR,
         .ore_mask = MSTP_ORE_MASK,
+        .tx_pad_octets = MSTP_TX_PAD_OCTETS,
     };
     mstp_setup(&dev, &params, 0);
 
@@ -319,16 +334,17 @@ int main(void)
         return 1;
     }
 
-    /* gnrc_netif_create() ran the (higher-priority) netif thread's init ==
-     * mstp_start() == uart_init() to completion before returning here, so the
-     * vector is live; raise its priority above other peripheral ISRs. See the
-     * note at MSTP_UART_IRQ_PRIO — this is the overrun fix from the ring app. */
+#ifdef MSTP_STM32_IRQ_PRIO
+    /* STM32 only: gnrc_netif_create() ran the netif thread's init == mstp_start()
+     * == uart_init() to completion before returning, so the vector is live; raise
+     * the MS/TP and console RX IRQs to priority 0 (the overrun fix). Not needed on
+     * nRF (EasyDMA RX), where MSTP_STM32_IRQ_PRIO is undefined. */
     NVIC_SetPriority(MSTP_UART_IRQN, MSTP_UART_IRQ_PRIO);
-    /* Peer the console UART so it isn't starved by MS/TP (keeps typed chars). */
     NVIC_SetPriority(MSTP_CONSOLE_IRQN, MSTP_UART_IRQ_PRIO);
     printf("UART RX IRQ (#%d) priority set to %u; console IRQ (#%d) matched\n",
            (int)MSTP_UART_IRQN, (unsigned)MSTP_UART_IRQ_PRIO,
            (int)MSTP_CONSOLE_IRQN);
+#endif
 
     /* Bound the successor sweep to the 8-node bed. mstp_start() (run inside
      * gnrc_netif_create above) already called mstp_mgr_init(), which set

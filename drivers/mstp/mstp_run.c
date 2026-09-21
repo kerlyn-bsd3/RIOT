@@ -60,8 +60,8 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
                         const uint8_t *data, uint16_t len)
 {
     mstp_t *dev = ctx;
-    uint8_t ctrl[8];
-    const uint8_t *frame;
+    uint8_t ctrl[8 + MSTP_TX_PAD_MAX];
+    uint8_t *frame;
     size_t n;
 
     if (data == NULL || len == 0U) {
@@ -78,7 +78,8 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
          * streaming it out of the UART as the AVR reference does). We only reach
          * here as Frame Type 34 (the port's next_tx queues nothing else).
          */
-        n = mstp_build_ipv6_frame(src, dst, data, len, dev->tx_buf, sizeof(dev->tx_buf));
+        n = mstp_build_ipv6_frame(src, dst, data, len, dev->tx_buf,
+                                  sizeof(dev->tx_buf) - MSTP_TX_PAD_MAX);
         if (n == 0U) {
             DEBUG("mstp: ipv6 frame build failed (dst=%u len=%u)\n",
                   (unsigned)dst, (unsigned)len);
@@ -96,30 +97,29 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
         ztimer_sleep(ZTIMER_USEC, tturn_us - silence_us);
     }
 
+    /*
+     * Optional trailing pad octet(s) (0xFF), contiguous with the frame in the SAME
+     * uart_write(). MS/TP permits trailing pad, and a receiver ignores a stray 0xFF
+     * in IDLE (preamble is 0x55 0xFF). This makes DE-release timing non-critical on
+     * a UART whose blocking uart_write() completes at the end of the last DATA bit,
+     * before the stop bit (nRF UARTE ENDTX): releasing DE immediately then clips only
+     * the PAD's stop bit, while the frame's CRC octet was fully framed before the pad.
+     * 0 on STM32 (uart_write blocks to transmit-complete; the line is already idle).
+     */
+    uint8_t pad = dev->params.tx_pad_octets;
+    if (pad > MSTP_TX_PAD_MAX) {
+        pad = MSTP_TX_PAD_MAX;
+    }
+    for (uint8_t i = 0; i < pad; i++) {
+        frame[n + i] = 0xFFU;
+    }
+    n += pad;
+
     ev_put(dev, MSTP_EV_TX, ft, src, dst, 0);     /* trace: about to transmit   */
     dev->txing = true;                            /* ignore our own RX echo (9.5.4) */
     gpio_set(dev->params.de_pin);                 /* enable driver (transmit)   */
     uart_write(dev->params.uart, frame, n);
-
-    /*
-     * 9.2 Tpostdrive: disable the driver only after the final stop bit has been
-     * generated — but no later than Tpostdrive. RIOT's blocking uart_write()
-     * already spins on the USART transmit-complete (TC) flag before returning
-     * (cpu/stm32/periph/uart.c: wait_for_tx_complete()), so the last stop bit is
-     * on the wire by the time we reach here; drop DE immediately.
-     *
-     * This must be prompt: on the DFR0259, /RE is tied to DE, so while DE is
-     * asserted the receiver is OFF. A peer answers a Poll For Manager almost
-     * immediately (its own Tturnaround, ~40 bit times), so any post-drive delay
-     * here keeps us deaf across the reply and the join is lost. (An earlier fixed
-     * ~(n+2)-character sleep did exactly that — correct for the Session-9 TX-only
-     * emitter, fatal once we must receive the answer.)
-     *
-     * NB: this relies on uart_write() being synchronous-to-TC — true for the
-     * blocking periph_uart path used here, but NOT for periph_uart_nonblocking or
-     * the DMA path below the threshold; revisit if either is enabled.
-     */
-    gpio_clear(dev->params.de_pin);               /* release driver (receive)   */
+    gpio_clear(dev->params.de_pin);               /* release: a clipped stop bit is the pad's */
     dev->txing = false;
 
     dev->rx.silence_timer = 0;                    /* 9.5.5: cleared per octet TX */
