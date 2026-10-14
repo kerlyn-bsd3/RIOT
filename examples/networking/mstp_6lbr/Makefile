@@ -11,12 +11,15 @@ QUIET ?= 1
 USEMODULE += mstp
 USEMODULE += iolist
 
-# --- SLIP uplink: slipdev on UART_DEV(0) = nRF52840-DK J-Link VCP, 576000 baud ---
-# SLIP owns the J-Link VCP; stdio goes to the native USB CDC-ACM (below). 576000 is
-# honoured because the VCP is a real UART bridge (matches the Contiki BDK link).
+# --- SLIP uplink: slipdev on UART_DEV(0) = nRF52840-DK J-Link VCP ---
+# SLIP owns the J-Link VCP; stdio goes to the native USB CDC-ACM (below).
 USEMODULE += slipdev
+# Override on the command line, e.g. `make SLIP_BAUDRATE=115200`, and pass the same
+# rate to start_network.sh. 115200 is verified on the J-Link OB VCP (2026-10-14);
+# 576000 (the Contiki BDK rate) fails there — see the session log.
+SLIP_BAUDRATE ?= 576000
 CFLAGS += -DSLIPDEV_PARAM_UART=UART_DEV\(0\)
-CFLAGS += -DSLIPDEV_PARAM_BAUDRATE=576000
+CFLAGS += -DSLIPDEV_PARAM_BAUDRATE=$(SLIP_BAUDRATE)
 
 # --- gnrc 6LoWPAN border router: 6LBR NIB role + IPv6 router + forwarding ---
 # pulls gnrc_ipv6_nib_6lbr + gnrc_ipv6_router_default + gnrc_sixlowpan.

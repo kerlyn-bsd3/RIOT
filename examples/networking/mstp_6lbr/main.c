@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "msg.h"
 #include "shell.h"
 #include "iolist.h"
 #include "net/gnrc/netif.h"
@@ -391,12 +392,19 @@ static int _setup_6lbr(gnrc_netif_t *downstream)
     return 0;
 }
 
+/* main thread runs the shell; 'ping' registers it with gnrc_netreg for echo
+ * replies, which requires a message queue (gnrc_netreg asserts otherwise). */
+#define MAIN_QUEUE_SIZE     (8)
+static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
+
 int main(void)
 {
+    msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
     printf("\n6LoBAC 6LBR: MS/TP (RFC 8163) <-> SLIP uplink on %s\n", MSTP_BOARD_NAME);
-    printf("MS/TP UART=%u baud=%lu TS=%u pad=%u | SLIP=UART0 @576000 | prefix %s/%u\n",
+    printf("MS/TP UART=%u baud=%lu TS=%u pad=%u | SLIP=UART0 @%lu | prefix %s/%u\n",
            (unsigned)MSTP_UART_DEV, (unsigned long)MSTP_BAUD, MSTP_SRC_ADDR,
-           (unsigned)MSTP_TX_PAD_OCTETS, BR_PREFIX, (unsigned)BR_PREFIX_LEN);
+           (unsigned)MSTP_TX_PAD_OCTETS, (unsigned long)SLIPDEV_PARAM_BAUDRATE,
+           BR_PREFIX, (unsigned)BR_PREFIX_LEN);
 
     const mstp_params_t params = {
         .uart     = MSTP_UART_DEV,

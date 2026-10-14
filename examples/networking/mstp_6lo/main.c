@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "msg.h"
 #include "shell.h"
 #include "iolist.h"
 #include "net/gnrc/netif.h"
@@ -308,8 +309,14 @@ static const gnrc_netif_ops_t _mstp_netif_ops = {
     .set  = gnrc_netif_set_from_netdev,
 };
 
+/* main thread runs the shell; 'ping' registers it with gnrc_netreg for echo
+ * replies, which requires a message queue (gnrc_netreg asserts otherwise). */
+#define MAIN_QUEUE_SIZE     (8)
+static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
+
 int main(void)
 {
+    msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
     printf("\n6LoBAC: IPv6-over-MS/TP (RFC 8163) on %s\n", MSTP_BOARD_NAME);
     printf("UART=%u baud=%lu TS=%u pad=%u\n",
            (unsigned)MSTP_UART_DEV, (unsigned long)MSTP_BAUD, MSTP_SRC_ADDR,

@@ -62,6 +62,21 @@ sudo $RIOTBASE/dist/tools/sliptty/start_network.sh -e aaaa::/64 /dev/ttyACM0 576
 
 (`$RIOTBASE` = the RIOT tree root, e.g. `~/src/github/RIOT-OS/RIOT`.)
 
+**Line rate.** The SLIP rate is a make variable, `SLIP_BAUDRATE` (default 576000);
+the firmware and `start_network.sh` must use the same value. On the bench (2026-10-14)
+**115200 works** over the J-Link OB VCP but **576000 does not** (no reply from
+`fe80::2`, garbled `Unknown packet type` frames in sliptty). Until a higher rate is
+verified, build and run at 115200:
+
+```
+make BOARD=nrf52840dk SLIP_BAUDRATE=115200 clean all
+make BOARD=nrf52840dk JLINK_SERIAL=<SN> flash
+sudo $RIOTBASE/dist/tools/sliptty/start_network.sh -e aaaa::/64 /dev/ttyACM0 115200
+```
+
+The SLIP link is only the 6LBR-to-host hop, so its rate does not have to match the
+Contiki BDK's 576000 — any rate both ends agree on works.
+
 ## Bring-up checklist
 
 1. **SLIP link:** after `start_network.sh`, `ip -6 addr show sl0` shows `fe80::1`;
