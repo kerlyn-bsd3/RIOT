@@ -11,8 +11,10 @@
  * The device descriptor bundles the two clean-room FSM cores (Receive Frame,
  * 9.5.4; Manager Node, 9.5.6), the ISR→thread octet ring, and the RS-485 /
  * timer / thread wiring. @ref mstp_start brings up token passing on the wire;
- * the @ref netdev_driver_t ops (for gnrc/IPv6 data) remain to be fleshed out.
- * See drivers/mstp/THEORY_OF_OPERATION.md and PORTING.md.
+ * the @ref netdev_driver_t ops (mstp_netdev.c) carry gnrc/IPv6 data over
+ * Frame Type 34 (135-2024 9.10.2), validated end to end on nrf52840dk and
+ * nucleo-f767zi.
+ * See drivers/mstp/THEORY_OF_OPERATION.md.
  * @{
  *
  * @file

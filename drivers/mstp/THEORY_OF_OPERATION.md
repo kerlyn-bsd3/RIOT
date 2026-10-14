@@ -2,23 +2,23 @@
 
 *ANSI/ASHRAE 135-2024 Clause 9 (Multidrop Serial Bus / Token Passing) on RIOT,
 for IPv6-over-MS/TP (RFC 8163 / draft-lynn-6lo-rfc8163-bis). This document
-records the major design decisions and their trade-offs; it is a companion to
-`PORTING.md` (the upstream integration map) and `notes/mstp-clause9-notes.md`
-(the distilled normative facts).*
+records the major design decisions and their trade-offs.*
 
 ## 1. Scope and current status
 
 The driver implements the two normative MS/TP state machines and the wiring
 needed for a node to **join a token ring** and participate in token passing
-(INITIALIZE → IDLE → Poll For Manager → token pass). IPv6 data exchange —
-the `netdev`/`gnrc_netif` path — is deliberately **not** started yet; the token
-ring is the prerequisite milestone and is where the timing-sensitive risk lives.
+(INITIALIZE → IDLE → Poll For Manager → token pass), and carries IPv6 data over
+Frame Type 34 through a `netdev`/`gnrc_netif` attachment. The token ring was the
+prerequisite milestone and is where the timing-sensitive risk lives.
 
-Implemented and host-verified: the Receive Frame FSM (9.5.4), the Manager Node
-FSM (9.5.6), SendFrame dispatch (9.5.5), the ISR↔FSM link glue, and the
-`mstp_ring` bring-up app. Deferred: the `netdev_driver_t` ops + gnrc attachment
-(IPv6 data), the Subordinate Node FSM (9.5.7), and the `periph_uart_rx_error`
-feature (see §8).
+Implemented and verified: the Receive Frame FSM (9.5.4), the Manager Node FSM
+(9.5.6), SendFrame dispatch (9.5.5), the ISR↔FSM link glue, Frame Type 34
+build/parse, and the `netdev_driver_t` ops + gnrc attachment (the `mstp_6lo`
+6LN app). Validated end to end — the node joins the ring, passes the token, and
+answers ICMPv6 echo — on both `nrf52840dk` and `nucleo-f767zi`. Deferred: the
+6LBR role, the Subordinate Node FSM (9.5.7), the `periph_uart_rx_error` feature
+(see §8), and SCHC (RFC 8724).
 
 ## 2. Clean-room discipline
 
@@ -128,11 +128,11 @@ eventual IPv6 driver are the **same core with different amounts of adapter**:
 |---|---|---|---|
 | FSM cores (9.5.4, 9.5.6) | `mstp_fsm.c`, `mstp_mgr.c` | no | yes (59 checks) |
 | Link glue (ring, pump, ctrl builder) | `mstp_link.c` | no | yes (26 checks) |
-| RS-485 / timer / thread | `mstp_run.c` | yes | stub-compiled |
-| netdev / gnrc (IPv6 data) | `mstp_netdev.c` | yes | **future** |
+| RS-485 / timer / thread | `mstp_run.c` | yes | on-target |
+| netdev / gnrc (IPv6 data) | `mstp_netdev.c` | yes | on-target (end-to-end ping) |
 
 Because the `mstp_mgr_port_t` boundary and the `mstp_link_pump()` entry are
-stable, converting from "bring-up app" to "full driver" is **additive**, not a
+stable, converting from "bring-up app" to "full driver" was **additive**, not a
 rewrite: the FSM files do not change, `send_frame` and the ISR/tick/thread wiring
 transplant verbatim, and the netdev ops (`_send` enqueues into what `next_tx`
 drains while holding the token; `_recv`/`_isr` deliver what `indicate` collects)
@@ -211,16 +211,108 @@ checks and 26 link/ring/pump checks, the latter including a full ring-join drive
 end-to-end through `mstp_link_pump()` — the exact code path the on-target thread
 runs, minus UART/GPIO/ztimer. The RIOT glue (`mstp_run.c`, `mstp.h`) cannot be
 built off-target, so it is compiled against stub headers that mirror the verified
-RIOT signatures to catch structural errors; final verification is a VM build
-(`make BOARD=nucleo-f767zi`) and an on-wire capture with the BDK monitor →
-mstpcap → Wireshark, confirming the node joins the ring and passes the token.
+RIOT signatures to catch structural errors; final verification is an on-target
+build (`make BOARD=nrf52840dk` / `nucleo-f767zi`) plus an on-wire capture →
+mstpcap → Wireshark and an end-to-end ICMPv6 echo, confirming the node joins the
+ring, passes the token, and exchanges IPv6 data over Frame Type 34.
 
 ## 11. Known gaps / future work
 
-The COBS data-frame branch of `send_frame` is a documented TODO (needs
-`mstp_frame.*` migrated into the driver — the same cleanup as moving `mstp_crc.*`
-/ `mstp_cobs.*` here); it is unreachable during token passing because `next_tx`
-is NULL. The DATA/DATA_CRC non-encoded path in the Receive FSM remains stubbed
-(CRC-16 unread; unreachable for all-COBS 6LoBAC traffic). The Subordinate Node
-FSM (9.5.7) is not implemented. `netdev`/gnrc attachment and SCHC (RFC 8724) are
-the subsequent milestones.
+The non-encoded DATA/DATA_CRC path in the Receive FSM is intentionally left
+stubbed (CRC-16 unread): 6LoBAC traffic is all-COBS/CRC-32K (Frame Type 34), so
+that branch is unreachable on the wire. The Subordinate Node FSM (9.5.7) is not
+implemented (only the Manager Node role is). The 6LBR role and SCHC (RFC 8724)
+are the subsequent milestones.
+
+## 12. Platform notes — the STM32F7 receive path, and why the testbed moved to nRF52840
+
+The driver was brought up first on the ST **Nucleo-F767ZI** (with a DFRobot
+DFR0259 RS-485 shield), and that is where the hard, board-specific lessons were
+learned. They are recorded here because they explain a decision that is otherwise
+invisible in the code — why the reference testbed is built on the Nordic
+**nRF52840-DK** — and because anyone porting this driver to another STM32 will
+hit the same wall.
+
+**Symptom: a header-CRC flood, not an FSM bug.** On the F767 the node would join
+the ring and then, under sustained bus traffic, drop out with a storm of
+header-CRC failures (`rx ok=0`, `hdrcrc` climbing). The clean-room FSM was the
+first suspect, but instrumentation exonerated it: with the app handing the driver
+a pointer to the USART status register and the overrun-error (ORE) bit mask
+(`mstp_params_t::ore_sr` / `ore_mask`, the STM32-specific hook of §8), the ISR
+could attribute each lost octet to a receive **overrun**. The counters were
+decisive — `abort=211(ore=207)`: ~98 % of the invalid frames had a mid-frame
+overrun on our side. The FSM was fine; the UART was dropping octets before the
+FSM ever saw them.
+
+**Root cause: RIOT reads one octet per RX interrupt, and the F7 USART has no RX
+FIFO.** RIOT's mainline `cpu/stm32/periph/uart.c` takes an RX interrupt per
+received octet (`USART_ISR_RXNE`) and has no RX DMA path (its DMA support is
+TX-only, `DMA_MEM_TO_PERIPH`). At 115.2 kbit/s the ISR has ~87 µs to run before
+the next octet arrives and overwrites the un-read data register; anything that
+delays it past that window loses an octet. Raising the MS/TP USART's RX interrupt
+to the highest NVIC priority (`NVIC_SetPriority(USART6_IRQn, 0)`) removed
+**same-priority** ISR contention and took the overrun rate from ~95 % of aborts
+down to ~0.25 % — enough for the token ring to circulate cleanly on a four-node
+bus. But priority cannot fix the tail: `irq_disable()` raises PRIMASK, which
+masks *all* priorities, so any critical section held longer than one octet time
+still drops a byte regardless of priority. The only real fix for that class is
+hardware buffering.
+
+The obvious buffering move — enable the USART's hardware RX FIFO — **does not
+exist on this part.** `USART_CR1_FIFOEN` is undefined for the STM32F7 family; the
+F7 USART simply has no FIFO (confirmed at boot; a speculative
+`MSTP_ENABLE_RX_FIFO` block compiled to a no-op). The only in-silicon RX
+buffering on the F767 is therefore **circular RX DMA**, which RIOT's stm32 driver
+does not implement, and which on the F7 carries cache-coherency baggage (DMA
+cannot reach DTCM; a cacheable buffer needs explicit invalidation or an MPU
+non-cacheable region). That is a register-level rewrite of the RX path, not a
+configuration change — and receive buffering is a *data-path prerequisite*, not
+merely a robustness nicety: a ~1500-octet Frame Type 34 has roughly 190× the
+overrun exposure of an 8-octet token, so what is a rare tail on the token ring
+becomes a real loss rate on IPv6 payloads.
+
+**A self-inflicted side effect worth remembering.** Pinning the MS/TP RX
+interrupt at priority 0 starved the console UART (USART3, the ST-Link VCP), which
+dropped typed keystrokes. Raising the console IRQ to the same priority restored
+the shell — but that is a workaround that trades one starvation for a scheduling
+tie, not a clean design. It is another symptom of the same root cause: with no RX
+buffering, correctness depends on ISR latency, and every other interrupt on the
+chip becomes a threat to it.
+
+**Resolution: the Nordic nRF52840-DK.** The nRF52840's UARTE peripheral receives
+over **EasyDMA** — the hardware writes incoming octets straight into a RAM buffer
+with no per-octet interrupt — so receive overrun under ISR contention cannot
+arise in the first place. Ported to `BOARD=nrf52840dk` with no change to the
+board-agnostic driver core (only the app's UART id and DE-pin GPIO differ), the
+6LN ran with **every receive error counter at zero**, versus the F767's
+irreducible ~0.25 % residual. That is why the RIOT-native, BDK-free testbed is
+built on the nRF52840, and why the STM32-only overrun hooks (`ore_sr`/`ore_mask`,
+the NVIC priority bump) are conditionalized out of the nRF build rather than
+carried forward. An STM32 with a real USART FIFO (e.g. the STM32G4 /
+Nucleo-G474RE) would give a small hardware cushion and is a reasonable in-family
+alternative, but it still falls short of the DMA-grade buffering the data path
+wants; the nRF's EasyDMA gets that for free.
+
+**One nRF-specific TX wrinkle (the mirror image of §7).** On the F767 the
+blocking `uart_write()` spins on the transmit-complete (TC) flag, so the last
+stop bit is already on the wire when it returns and DE can drop immediately
+(§7). On the nRF, `uart_write()` returns at the UARTE **ENDTX** event — the
+moment DMA finishes the last *data* bit — which is *before* the final stop bit
+has fully left the pin; dropping DE there clips the stop bit. Rather than time a
+post-TX guard (fragile, baud-dependent), the driver appends a trailing **0xFF
+pad octet** (`mstp_params_t::tx_pad_octets`) after the frame: the clipped bit
+then belongs to the pad, not to the real last octet, and MS/TP receivers ignore
+a stray 0xFF in the inter-frame idle (the preamble is `55 FF`, so a lone `FF`
+never starts a frame). This is spec-permitted (135-2024 allows an optional
+trailing pad octet) and is deterministic, unlike a timed drop. On the F767 the
+pad count is 0; on the nRF it is 1.
+
+The table below summarizes the receive-path contrast that drove the choice:
+
+| | Nucleo-F767ZI (STM32F7) | nRF52840-DK |
+|---|---|---|
+| RIOT RX model | one IRQ per octet (`RXNE`), no RX DMA | UARTE EasyDMA into RAM, no per-octet IRQ |
+| Hardware RX FIFO | none (`FIFOEN` undefined on F7) | n/a — DMA buffer |
+| Overrun under ISR load | yes; priority helps, tail via PRIMASK | none observed (error counters 0) |
+| STM32-only hooks needed | `ore_sr`/`ore_mask`, NVIC bump, console-IRQ tie | none |
+| DE release after TX | drop at TC (blocking `uart_write` waits it) | append 0xFF pad; ENDTX precedes stop bit |

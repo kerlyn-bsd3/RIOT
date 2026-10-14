@@ -7,8 +7,8 @@
  * @file
  * @brief   Build a BACnet MS/TP IPv6-encapsulation (Frame Type 34) frame.
  *
- * Migrated verbatim (re-homed onto the driver's crc/cobs/fsm headers) from the
- * on-wire-verified builder in examples/networking/lobac_bringup/. Layout per
+ * Built on the driver's crc/cobs/fsm headers; on-wire verified against a real
+ * capture and round-trip host-tested (tests-host/test_mstp_frame.c). Layout per
  * ANSI/ASHRAE 135-2024 Clause 9.3 / 9.10.2:
  *
  *   55 FF | FT Dst Src LenHi LenLo HdrCRC | Encoded Data | Encoded CRC-32K

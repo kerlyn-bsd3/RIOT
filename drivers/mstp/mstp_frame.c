@@ -2,11 +2,10 @@
  * Copyright (C) 2026 WPI MQP (6LoBAC) — Kerry Lynn
  * SPDX-License-Identifier: BSD-3-Clause
  *
- * Frame Type 34 (IPv6-over-MS/TP) assembly — 135-2024 Clause 9.10.2. Migrated
- * from the on-wire-verified builder in examples/networking/lobac_bringup/,
- * re-homed onto the driver's mstp_crc / mstp_cobs / mstp_fsm headers so the whole
- * data path (build here, decode in mstp_fsm.c) lives in one module and is
- * round-trip host-tested (tests-host/test_mstp_frame.c).
+ * Frame Type 34 (IPv6-over-MS/TP) assembly — 135-2024 Clause 9.10.2. Built on
+ * the driver's mstp_crc / mstp_cobs / mstp_fsm headers so the whole data path
+ * (build here, decode in mstp_fsm.c) lives in one module; on-wire verified
+ * against a real capture and round-trip host-tested (tests-host/test_mstp_frame.c).
  *
  * NOT derived from bacnet-stack (GPL). COBS and CRC-32K come from
  * draft-lynn-6lo-rfc8163-bis-01 (IETF Trust / Simplified BSD).

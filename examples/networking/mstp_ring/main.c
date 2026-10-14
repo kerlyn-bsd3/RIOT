@@ -3,11 +3,10 @@
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * MS/TP token-ring join bring-up for the ST Nucleo-F767ZI + DFRobot RS485
- * Shield v1.0 (DFR0259). Unlike lobac_bringup (which blindly emits a Frame
- * Type 34 every 2 s), this app runs the clean-room Manager Node FSM (135-2024
- * 9.5.6) so the node actually participates in token passing: INITIALIZE -> IDLE
- * -> Poll For Manager / token pass, joining the BDK monitor's ring. No IPv6
- * data yet — see drivers/mstp/THEORY_OF_OPERATION.md.
+ * Shield v1.0 (DFR0259). This diagnostic app runs the clean-room Manager Node
+ * FSM (135-2024 9.5.6) so the node actually participates in token passing:
+ * INITIALIZE -> IDLE -> Poll For Manager / token pass, joining an existing
+ * MS/TP ring. No IPv6 data — see drivers/mstp/THEORY_OF_OPERATION.md.
  *
  * Shield jumpers (as in Session 9): serial-select -> HARDWARE serial (D0/D1);
  * transceiver mode -> MANU; EN = D2 (PF15), HIGH = transmit.

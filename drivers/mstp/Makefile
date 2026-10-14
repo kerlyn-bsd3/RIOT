@@ -1,4 +1,3 @@
-# SKELETON — MS/TP (6LoBAC) netdev driver.
-# Builds the driver object once the module is registered and pulled in via
-# USEMODULE += mstp. See PORTING.md for the remaining integration steps.
+# MS/TP (6LoBAC) netdev driver — IPv6-over-MS/TP (RFC 8163).
+# Pulled into a build with USEMODULE += mstp. See THEORY_OF_OPERATION.md.
 include $(RIOTBASE)/Makefile.base

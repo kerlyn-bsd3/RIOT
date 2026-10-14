@@ -324,8 +324,9 @@ mstp_rx_result_t mstp_rx_fsm_octet(mstp_rx_fsm_t *fsm, uint8_t octet)
         if (fsm->index < fsm->data_length) {                 /* DataOctet */
             fsm->input_buffer[fsm->index] = octet;
             fsm->index++;
-            /* TODO: accumulate DataCRC (CRC-16) — needs 9.6.2 / Annex G.
-             * Unreachable for 6LoBAC, whose frames are all COBS-encoded. */
+            /* Non-encoded DataCRC (CRC-16, 9.6.2 / Annex G) is intentionally
+             * not accumulated: 6LoBAC frames are all COBS-encoded, so this
+             * path is unreachable on the wire. */
             return MSTP_RX_NONE;
         }
         if (fsm->index == fsm->data_length) {                     /* CRC1 */
@@ -334,7 +335,7 @@ mstp_rx_result_t mstp_rx_fsm_octet(mstp_rx_fsm_t *fsm, uint8_t octet)
         }
         /* CRC2 -> DATA_CRC (9.5.4.6), transient */
         fsm->stats.data_crc_err++;
-        return invalid(fsm);   /* TODO: check DataCRC == X'F0B8' */
+        return invalid(fsm);   /* non-encoded DataCRC (X'F0B8') check omitted by design */
 
     case MSTP_RX_SKIP_DATA:                                   /* 9.5.4.7 */
         if (fsm->index < (uint16_t)(fsm->data_length + 1U)) { /* DataOctet */
