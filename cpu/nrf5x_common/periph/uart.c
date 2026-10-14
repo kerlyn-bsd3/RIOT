@@ -210,6 +210,14 @@ int uart_init(uart_t uart, uint32_t baudrate, uart_rx_cb_t rx_cb, void *arg)
     case 460800:
         dev->BAUDRATE = UART_BAUDRATE_BAUDRATE_Baud460800;
         break;
+    case 576000:
+        /* Not a Nordic-documented rate, but BAUDRATE is a fractional generator:
+         * round(baud * 2^32 / 16 MHz) to a 4096 multiple = 0x09375000
+         * (576004 baud, +0.0007 %). Same formula reproduces the documented
+         * 460800 value (0x075F7000). Needed for the 6LoBAC 6LBR SLIP uplink,
+         * which matches the Contiki BDK's 576000 SLIP rate. */
+        dev->BAUDRATE = 0x09375000UL;
+        break;
     case 921600:
         dev->BAUDRATE = UART_BAUDRATE_BAUDRATE_Baud921600;
         break;

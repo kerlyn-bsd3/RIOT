@@ -51,10 +51,12 @@ make BOARD=nrf52840dk term-rtt
 
 The static node pairs with RIOT's `start_network.sh` in **SLIP-only** mode (`-e`,
 no uhcpd — our prefix is hardcoded). It creates tun `sl0` (`fe80::1` + route
-`aaaa::/64` via `fe80::2`) and runs tunslip6 at 576000 on the J-Link VCP:
+`aaaa::/64` via `fe80::2`) and runs RIOT's `sliptty` (its tunslip6 equivalent) at
+576000 on the J-Link VCP. 576000 needs the `cpu/nrf5x_common/periph/uart.c` case
+added for this app — stock RIOT's nRF UART rejects it (`UART_NOBAUD`):
 
 ```
-make -C $RIOTBASE/dist/tools/sliptty            # build sliptty/tunslip6 once
+make -C $RIOTBASE/dist/tools/sliptty            # build sliptty once
 sudo $RIOTBASE/dist/tools/sliptty/start_network.sh -e aaaa::/64 /dev/ttyACM0 576000
 ```
 
