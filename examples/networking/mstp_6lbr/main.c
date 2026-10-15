@@ -99,6 +99,18 @@
 #define SLIP_OB_RTS_HIGH    (1)
 #endif
 #define SLIP_OB_RTS_PIN     GPIO_PIN(0, 5)
+/*
+ * RIOT's nRF UARTE RX takes ONE byte per EasyDMA transfer (MAXCNT=1, ENDRX->STARTRX
+ * short into the same 1-byte buffer), so the ISR must read each byte before the
+ * next lands: ~10-13 us at 1 Mbaud vs 87 us at 115200. At the default IRQ priority
+ * (2, shared with USB/console and the MS/TP UARTE1) bytes get overwritten and SLIP
+ * frames are silently dropped (2026-10-15: Saleae shows clean 1M requests on P0.08,
+ * no reply on P0.06). Raise UARTE0 to priority 0. -DSLIP_UART_IRQ_PRIO0=0 disables.
+ */
+#ifndef SLIP_UART_IRQ_PRIO0
+#define SLIP_UART_IRQ_PRIO0 (1)
+#endif
+#define SLIP_UART_IRQN      UARTE0_UART0_IRQn
 
 #elif defined(BOARD_NUCLEO_F767ZI)
 /*
@@ -416,6 +428,10 @@ int main(void)
     /* tell the J-Link OB "no HWFC" before the host opens the VCP (see above) */
     gpio_init(SLIP_OB_RTS_PIN, GPIO_OUT);
     gpio_set(SLIP_OB_RTS_PIN);
+#endif
+#if defined(SLIP_UART_IRQN) && SLIP_UART_IRQ_PRIO0
+    /* slipdev auto-init already enabled the IRQ; just raise its priority */
+    NVIC_SetPriority(SLIP_UART_IRQN, 0);
 #endif
     printf("\n6LoBAC 6LBR: MS/TP (RFC 8163) <-> SLIP uplink on %s\n", MSTP_BOARD_NAME);
     printf("MS/TP UART=%u baud=%lu TS=%u pad=%u | SLIP=UART0 @%lu | prefix %s/%u\n",
