@@ -48,6 +48,7 @@
 #include "net/netopt.h"
 
 #include "mstp.h"
+#include "periph/gpio.h"
 
 /* ------------------------------------------------------------------------- *
  * Configuration. The mstp driver is board-agnostic; only the values below differ
@@ -87,6 +88,17 @@
 #define MSTP_UART_DEV       UART_DEV(1)
 #define MSTP_DE_PIN         GPIO_PIN(1, 3)        /* Arduino D2 = P1.03 */
 #define MSTP_TX_PAD_OCTETS  (1U)             /* one 0xFF pad; ENDTX fires pre-stop-bit */
+/*
+ * J-Link OB VCOM auto-detects UART hardware flow control from the target's RTS line
+ * (nRF52840-DK: P0.05 -> OB). RIOT leaves UART0 RTS unconnected, so the pin floats
+ * and the OB's HWFC decision is arbitrary; per Nordic/SEGGER, RTS *high* before the
+ * first transfer makes the OB keep HWFC off. Suspected cause of SLIP failing above
+ * 115200 (2026-10-14). Set -DSLIP_OB_RTS_HIGH=0 to disable.
+ */
+#ifndef SLIP_OB_RTS_HIGH
+#define SLIP_OB_RTS_HIGH    (1)
+#endif
+#define SLIP_OB_RTS_PIN     GPIO_PIN(0, 5)
 
 #elif defined(BOARD_NUCLEO_F767ZI)
 /*
@@ -400,6 +412,11 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 int main(void)
 {
     msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
+#if defined(SLIP_OB_RTS_PIN) && SLIP_OB_RTS_HIGH
+    /* tell the J-Link OB "no HWFC" before the host opens the VCP (see above) */
+    gpio_init(SLIP_OB_RTS_PIN, GPIO_OUT);
+    gpio_set(SLIP_OB_RTS_PIN);
+#endif
     printf("\n6LoBAC 6LBR: MS/TP (RFC 8163) <-> SLIP uplink on %s\n", MSTP_BOARD_NAME);
     printf("MS/TP UART=%u baud=%lu TS=%u pad=%u | SLIP=UART0 @%lu | prefix %s/%u\n",
            (unsigned)MSTP_UART_DEV, (unsigned long)MSTP_BAUD, MSTP_SRC_ADDR,

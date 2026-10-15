@@ -30,11 +30,19 @@ USEMODULE += gnrc_icmpv6_echo
 # in main() (custom L2 ops). mstp has no auto-init entry, so only slip is auto-made.
 USEMODULE += auto_init_gnrc_netif
 
-# --- console on the nRF native USB CDC-ACM (SLIP owns the J-Link VCP) ---
-# Fallback if the native USB port won't enumerate: comment the stdio_cdc_acm line,
-# uncomment stdio_rtt, rebuild, and use `make BOARD=nrf52840dk term-rtt`.
-USEMODULE += stdio_cdc_acm
-# USEMODULE += stdio_rtt
+# --- console: CONSOLE=cdc_acm (default) or CONSOLE=rtt ---
+# SLIP owns the J-Link VCP, so stdio can't use UART0.
+#  cdc_acm: nRF native USB (2nd cable, 2nd /dev/ttyACM*); `make term PORT=/dev/ttyACMx`.
+#           Boot banner is lost to the USB re-enumeration race after a reset.
+#  rtt:     SEGGER RTT over the same J-Link cable as flash + SLIP (no nRF USB cable);
+#           `make CONSOLE=rtt JLINK_SERIAL=<SN> term-rtt`. RTT buffers output, so the
+#           banner survives until the terminal attaches.
+CONSOLE ?= cdc_acm
+ifeq (rtt,$(CONSOLE))
+  USEMODULE += stdio_rtt
+else
+  USEMODULE += stdio_cdc_acm
+endif
 
 # --- shell + diagnostics ---
 USEMODULE += shell
