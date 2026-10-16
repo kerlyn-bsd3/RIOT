@@ -116,6 +116,9 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
     n += pad;
 
     ev_put(dev, MSTP_EV_TX, ft, src, dst, 0);     /* trace: about to transmit   */
+    if (dev->params.tap) {                        /* bus monitor: our own frame */
+        dev->params.tap(dev->params.tap_arg, frame, n, true);
+    }
     dev->txing = true;                            /* ignore our own RX echo (9.5.4) */
     gpio_set(dev->params.de_pin);                 /* enable driver (transmit)   */
     uart_write(dev->params.uart, frame, n);
@@ -202,6 +205,12 @@ static void _uart_rx(void *arg, uint8_t data)
     if (dev->txing) {
         dev->txing_drop++;   /* silent inbound drop — the one path with no CRC/err counter */
         return;
+    }
+
+    /* Raw-octet tap (bus monitor): every octet a peer put on the bus, in order,
+     * before the Receive FSM can judge it. */
+    if (dev->params.tap) {
+        dev->params.tap(dev->params.tap_arg, &data, 1, false);
     }
 
     /*
