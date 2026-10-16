@@ -25,6 +25,7 @@
 #define MSTP_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "periph/uart.h"
@@ -93,6 +94,26 @@ typedef struct {
 /**
  * @brief   Static configuration for one MS/TP interface.
  */
+/**
+ * @brief   Optional raw-octet tap (bus monitor / capture).
+ *
+ * Called with the exact octets this node sees on the bus, in bus order:
+ *  - RX: each received octet, from the UART RX ISR, BEFORE the Receive Frame FSM
+ *        (so malformed/aborted frames are tapped too). Not called while this node
+ *        is transmitting (its own half-duplex echo, if any, is dropped as usual).
+ *  - TX: the complete buffer handed to uart_write() (frame + any pad octets),
+ *        from the FSM thread, just before it is written. Needed because on
+ *        transceivers with DE/RE tied (e.g. DFR0259) a node never receives its
+ *        own frames.
+ * Runs in ISR context for RX: keep it short and non-blocking.
+ *
+ * @param[in] arg   mstp_params_t::tap_arg
+ * @param[in] buf   octets
+ * @param[in] len   number of octets (1 for RX)
+ * @param[in] tx    true if these are octets this node is transmitting
+ */
+typedef void (*mstp_tap_cb_t)(void *arg, const uint8_t *buf, size_t len, bool tx);
+
 typedef struct {
     uart_t   uart;      /**< UART connected to the RS-485 transceiver           */
     uint32_t baud;      /**< bus baud rate (e.g. 115200 for the BDK ring)       */
@@ -124,6 +145,10 @@ typedef struct {
      * Clamped to MSTP_TX_PAD_MAX.
      */
     uint8_t  tx_pad_octets;
+
+    /* Optional raw-octet tap (see mstp_tap_cb_t). NULL = off (zero cost). */
+    mstp_tap_cb_t tap;
+    void         *tap_arg;   /**< passed to @c tap */
 } mstp_params_t;
 
 /** @brief Max trailing pad octets appendable per frame (mstp_params_t::tx_pad_octets). */
