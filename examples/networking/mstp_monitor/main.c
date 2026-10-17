@@ -75,6 +75,15 @@
  * it within one character time (~87 us @115200). USB interrupts share the default
  * priority, so put the MS/TP UART on top (same fix as the 6LBR's SLIP UART). */
 #define MSTP_UART_IRQN      UARTE1_IRQn
+/* The J-Link OB auto-detects UART HW flow control from the nRF's RTS line (P0.05)
+ * when the host opens the console port. RIOT leaves P0.05 undriven, so the OB's
+ * decision is arbitrary and it may withhold host->nRF bytes (dead-looking shell).
+ * Driving RTS high before the port is opened tells the OB "no HWFC" (as in
+ * mstp_6lbr). -DMON_OB_RTS_HIGH=0 disables. */
+#ifndef MON_OB_RTS_HIGH
+#define MON_OB_RTS_HIGH     (1)
+#endif
+#define MON_OB_RTS_PIN      GPIO_PIN(0, 5)
 #else
 #error "mstp_monitor: unsupported BOARD - add a board-config block"
 #endif
@@ -194,6 +203,10 @@ static void *_status_thread(void *arg)
 /* ------------------------------------------------------------------------- */
 int main(void)
 {
+#if defined(MON_OB_RTS_PIN) && MON_OB_RTS_HIGH
+    gpio_init(MON_OB_RTS_PIN, GPIO_OUT);
+    gpio_set(MON_OB_RTS_PIN);
+#endif
     printf("\n6LoBAC MS/TP bus monitor (raw echo -> native USB CDC-ACM) on %s\n",
            MSTP_BOARD_NAME);
     printf("MS/TP UART=%u baud=%lu TS=%u Nmax_manager=%u pad=%u | USB buf=%u\n",
