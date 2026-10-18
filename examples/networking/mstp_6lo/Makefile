@@ -34,4 +34,10 @@ USEMODULE += ztimer
 USEMODULE += ztimer_msec
 USEMODULE += ztimer_usec
 
+# RFC 8163 MS/TP carries MSDUs up to 1500 octets (the driver reports
+# NETOPT_MAX_PDU_SIZE = MSTP_MAX_MSDU = 1500), but gnrc pins every 6Lo
+# interface to the IPv6 minimum MTU of 1280 unless this is set. With it the
+# mstp netif MTU becomes 1500 (largest unfragmented echo: ping -s 1452).
+CFLAGS += -DCONFIG_GNRC_NETIF_NONSTANDARD_6LO_MTU=1
+
 include $(RIOTBASE)/Makefile.include
