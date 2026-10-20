@@ -100,3 +100,18 @@ Contiki BDK's 576000 — any rate both ends agree on works.
   what goes there.
 - Prefix/addresses are compile-time (`BR_PREFIX` etc. in main.c). This mirrors
   RIOT's uhcp client (`gnrc_uhcpc.c`) but hardcoded; see main.c's header.
+
+## Uplink over native USB (CDC-ECM) — `UPLINK=cdc-ecm`
+
+Replaces SLIP with USB Ethernet on the nRF52840-DK's **native** USB port (the
+connector marked nRF USB; a second cable). The J-Link OB and UARTE0 drop out of the
+data path; the console moves to RTT over the J-Link cable (forced).
+
+```sh
+make BOARD=nrf52840dk UPLINK=cdc-ecm JLINK_SERIAL=<SN> flash
+sudo ./start_ecm.sh                 # finds the RIOT cdc_ether netdev, fe80::1 + route aaaa::/64 via fe80::2
+make BOARD=nrf52840dk UPLINK=cdc-ecm JLINK_SERIAL=<SN> term   # RTT console
+```
+
+The host interface is a network device (`ip link`: `usb0`/`enx…`), not a
+`/dev/ttyACM*`. If NetworkManager grabs it, `nmcli dev set <iface> managed no`.

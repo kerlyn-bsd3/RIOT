@@ -11,9 +11,12 @@
  *     advertises the prefix (RA with PIO A=1/L=0 + 6CO + ABRO) and answers 6LoWPAN
  *     address registration (NS(ARO) -> NA(ARO)) — the piece the aging Contiki BDK
  *     lacked, so a 6LN registers natively here (no manual `ifconfig add`).
- *   - UPSTREAM: slipdev on UART_DEV(0) (the nRF52840-DK's on-board J-Link VCP) at
- *     576000 baud. A real UART bridge, so 576000 is honoured end to end — matching
- *     the BDK's SLIP link. tunslip6 on the host provides the tun + routing.
+ *   - UPSTREAM (UPLINK=slip, default): slipdev on UART_DEV(0) (the nRF52840-DK's
+ *     on-board J-Link VCP) at SLIP_BAUDRATE (1 Mbaud verified); the host runs
+ *     dist/tools/sliptty/start_network.sh.
+ *     UPSTREAM (UPLINK=cdc-ecm): USB Ethernet (usbus_cdc_ecm) on the nRF native USB;
+ *     the host sees a cdc_ether netdev and runs ./start_ecm.sh. Either way the
+ *     uplink link-local is fe80::2 with a default route via the host's fe80::1.
  *
  * The 6LBR setup in main() is the static (hardcoded) equivalent of RIOT's uhcp
  * client (sys/.../gnrc_uhcpc.c): install aaaa::/64 on the downstream (prefix +
@@ -379,7 +382,7 @@ static int _setup_6lbr(gnrc_netif_t *downstream)
 {
     gnrc_netif_t *uplink = _find_uplink(downstream);
     if (uplink == NULL) {
-        puts("6LBR: no slip uplink found — is slipdev auto-init enabled?");
+        puts("6LBR: no uplink netif found — is slipdev / usbus_cdc_ecm auto-init enabled?");
         return -ENODEV;
     }
 
@@ -410,7 +413,7 @@ static int _setup_6lbr(gnrc_netif_t *downstream)
     gnrc_ipv6_nib_change_rtr_adv_iface(downstream, true);
 
     printf("6LBR up: downstream if=%u advertising %s/%u (A=1/L=0);"
-           " uplink if=%u slip=%s, default via %s\n",
+           " uplink if=%u ll=%s, default via %s\n",
            (unsigned)downstream->pid, BR_PREFIX, (unsigned)BR_PREFIX_LEN,
            (unsigned)uplink->pid, BR_SLIP_NODE_LL, BR_SLIP_HOST_LL);
     return 0;
@@ -424,20 +427,27 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 int main(void)
 {
     msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
-#if defined(SLIP_OB_RTS_PIN) && SLIP_OB_RTS_HIGH
+#if defined(BR_UPLINK_SLIP) && defined(SLIP_OB_RTS_PIN) && SLIP_OB_RTS_HIGH
     /* tell the J-Link OB "no HWFC" before the host opens the VCP (see above) */
     gpio_init(SLIP_OB_RTS_PIN, GPIO_OUT);
     gpio_set(SLIP_OB_RTS_PIN);
 #endif
-#if defined(SLIP_UART_IRQN) && SLIP_UART_IRQ_PRIO0
+#if defined(BR_UPLINK_SLIP) && defined(SLIP_UART_IRQN) && SLIP_UART_IRQ_PRIO0
     /* slipdev auto-init already enabled the IRQ; just raise its priority */
     NVIC_SetPriority(SLIP_UART_IRQN, 0);
 #endif
+#if defined(BR_UPLINK_CDC_ECM)
+    printf("\n6LoBAC 6LBR: MS/TP (RFC 8163) <-> USB CDC-ECM uplink on %s\n", MSTP_BOARD_NAME);
+    printf("MS/TP UART=%u baud=%lu TS=%u pad=%u | uplink=CDC-ECM (native USB) | prefix %s/%u\n",
+           (unsigned)MSTP_UART_DEV, (unsigned long)MSTP_BAUD, MSTP_SRC_ADDR,
+           (unsigned)MSTP_TX_PAD_OCTETS, BR_PREFIX, (unsigned)BR_PREFIX_LEN);
+#else
     printf("\n6LoBAC 6LBR: MS/TP (RFC 8163) <-> SLIP uplink on %s\n", MSTP_BOARD_NAME);
     printf("MS/TP UART=%u baud=%lu TS=%u pad=%u | SLIP=UART0 @%lu | prefix %s/%u\n",
            (unsigned)MSTP_UART_DEV, (unsigned long)MSTP_BAUD, MSTP_SRC_ADDR,
            (unsigned)MSTP_TX_PAD_OCTETS, (unsigned long)SLIPDEV_PARAM_BAUDRATE,
            BR_PREFIX, (unsigned)BR_PREFIX_LEN);
+#endif
 
     const mstp_params_t params = {
         .uart     = MSTP_UART_DEV,
@@ -480,7 +490,11 @@ int main(void)
      * auto-inited before main; mstp was just created above). */
     _setup_6lbr(&_netif);
 
-    puts("6LBR ready — run tunslip6 on the host (see README); 'ifconfig'/'nib' to inspect");
+#if defined(BR_UPLINK_CDC_ECM)
+    puts("6LBR ready — run ./start_ecm.sh on the host (see README); 'ifconfig'/'nib' to inspect");
+#else
+    puts("6LBR ready — run sliptty start_network.sh on the host (see README); 'ifconfig'/'nib' to inspect");
+#endif
     puts("status printing is OFF; type 'status' to toggle the periodic MS/TP report");
 
     thread_create(_status_stack, sizeof(_status_stack),
