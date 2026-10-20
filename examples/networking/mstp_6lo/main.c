@@ -180,12 +180,13 @@ static void *_status_thread(void *arg)
 
         /* THE key line for the ping-reply test: ind = pings handed to RIOT,
          * tx34 = Type-34 frames we transmitted (echo replies once RIOT answers). */
-        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu\n",
+        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu de_late=%lu\n",
                (unsigned long)dev.rx_ind,
                (unsigned)dev.rx_ind_last_ft,
                (unsigned)dev.rx_ind_last_len,
                (unsigned long)dev.tx_ipv6,
-               (unsigned long)dev.tx_busy);
+               (unsigned long)dev.tx_busy,
+               (unsigned long)dev.de_late);
 
         /* Drain the event trace, skipping routine Token traffic (summarised by
          * the FSM's own counters); show every RXINV plus any non-Token frame so

@@ -224,12 +224,13 @@ static void *_status_thread(void *arg)
                (unsigned long)dev.rx.stats.receive_error,
                (unsigned long)dev.txing_drop);
 
-        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu\n",
+        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu de_late=%lu\n",
                (unsigned long)dev.rx_ind,
                (unsigned)dev.rx_ind_last_ft,
                (unsigned)dev.rx_ind_last_len,
                (unsigned long)dev.tx_ipv6,
-               (unsigned long)dev.tx_busy);
+               (unsigned long)dev.tx_busy,
+               (unsigned long)dev.de_late);
 
         while (dev.ev_tail != dev.ev_head) {
             const mstp_ev_t *e = &dev.evlog[dev.ev_tail & (MSTP_EVLOG_LEN - 1U)];

@@ -175,6 +175,11 @@ typedef struct {
                                        ONLY silent inbound-drop path. A peer's
                                        reply arriving while this is set is lost
                                        with no error/CRC counter — watch it.     */
+    ztimer_t          de_timer;   /**< releases DE + txing at the computed end of
+                                       the frame from ISR context, so a preempted
+                                       FSM thread can't hold the bus (2026-10-20) */
+    uint32_t          de_late;    /**< frames whose DE the timer released because
+                                       the FSM thread was still preempted/busy   */
     uint32_t          last_ms;    /**< ztimer_now at the previous pump           */
     uint32_t          last_frames_inv; /**< to detect newly seen invalid frames  */
 

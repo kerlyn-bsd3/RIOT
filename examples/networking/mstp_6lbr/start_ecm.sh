@@ -41,6 +41,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# NetworkManager otherwise "manages" the re-created netdev after every 6LBR reset:
+# it adds its own link-local and drops our fe80::1 (seen 2026-10-20).
+if command -v nmcli >/dev/null 2>&1; then
+    nmcli dev set "$IFACE" managed no 2>/dev/null && echo "NetworkManager: $IFACE unmanaged"
+    sleep 1
+fi
 sysctl -qw net.ipv6.conf.all.forwarding=1
 sysctl -qw net.ipv6.conf."$IFACE".accept_ra=0
 ip link set "$IFACE" up
