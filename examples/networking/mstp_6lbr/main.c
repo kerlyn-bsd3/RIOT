@@ -51,6 +51,9 @@
 #include "net/netopt.h"
 
 #include "mstp.h"
+#include "container.h"
+#include "msg_bus.h"
+#include "thread.h"
 #include "periph/gpio.h"
 
 /* ------------------------------------------------------------------------- *
@@ -378,6 +381,73 @@ static gnrc_netif_t *_find_uplink(const gnrc_netif_t *downstream)
     return NULL;
 }
 
+/* UPSTREAM: our link-local = fe80::2 (the host routes the prefix to it), default
+ * route out via the host's fe80::1. Idempotent: adding an address that is already
+ * present is a no-op, and ft_add of an existing default route just refreshes it. */
+static void _uplink_config(gnrc_netif_t *uplink)
+{
+    ipv6_addr_t node_ll, host_ll, defroute = IPV6_ADDR_UNSPECIFIED;
+    ipv6_addr_from_str(&node_ll, BR_SLIP_NODE_LL);
+    ipv6_addr_from_str(&host_ll, BR_SLIP_HOST_LL);
+    int r = gnrc_netapi_set(uplink->pid, NETOPT_IPV6_ADDR, 64 << 8,
+                            &node_ll, sizeof(node_ll));
+    if (r < 0) {
+        printf("6LBR: adding %s to uplink failed (%d)\n", BR_SLIP_NODE_LL, r);
+    }
+    r = gnrc_ipv6_nib_ft_add(&defroute, 0, &host_ll, uplink->pid, 0);
+    if (r < 0) {
+        printf("6LBR: default route add failed (%d)\n", r);
+    }
+}
+
+#if defined(BR_UPLINK_CDC_ECM)
+/*
+ * USB CDC-ECM signals LINK_DOWN until the host configures the device, and again on
+ * every USB reset/re-enumeration. The NIB's iface-down handler deletes ALL
+ * link-local addresses ("link-local address might change on reconnect",
+ * nib.c), so our manually added fe80::2 vanishes and only the EUI-64 link-local
+ * comes back on LINK_UP (seen 2026-10-20: ifconfig 6 had no fe80::2; host NS for
+ * it unanswered). Watch the interface's IPv6 bus: each time a link-local becomes
+ * VALID (i.e. the link came up), re-apply the uplink config.
+ */
+static char _uplink_watch_stack[THREAD_STACKSIZE_DEFAULT];
+
+static void *_uplink_watch(void *arg)
+{
+    gnrc_netif_t *uplink = arg;
+    msg_t queue[4];
+    msg_bus_entry_t sub;
+    ipv6_addr_t node_ll;
+
+    msg_init_queue(queue, ARRAY_SIZE(queue));
+    ipv6_addr_from_str(&node_ll, BR_SLIP_NODE_LL);
+    msg_bus_attach(gnrc_netif_get_bus(uplink, GNRC_NETIF_BUS_IPV6), &sub);
+    msg_bus_subscribe(&sub, GNRC_IPV6_EVENT_ADDR_VALID);
+    /* the link may already have come up before we subscribed */
+    _uplink_config(uplink);
+
+    while (1) {
+        msg_t m;
+        msg_receive(&m);
+        const ipv6_addr_t *a = m.content.ptr;
+        if ((a != NULL) && ipv6_addr_is_link_local(a) &&
+            !ipv6_addr_equal(a, &node_ll)) {
+            _uplink_config(uplink);
+            printf("6LBR: uplink link-local valid -> (re)added %s, default via %s\n",
+                   BR_SLIP_NODE_LL, BR_SLIP_HOST_LL);
+        }
+    }
+    return NULL;
+}
+
+static void _uplink_watch_start(gnrc_netif_t *uplink)
+{
+    thread_create(_uplink_watch_stack, sizeof(_uplink_watch_stack),
+                  THREAD_PRIORITY_MAIN - 1, 0, _uplink_watch, uplink,
+                  "uplink_watch");
+}
+#endif
+
 static int _setup_6lbr(gnrc_netif_t *downstream)
 {
     gnrc_netif_t *uplink = _find_uplink(downstream);
@@ -386,17 +456,10 @@ static int _setup_6lbr(gnrc_netif_t *downstream)
         return -ENODEV;
     }
 
-    /* UPSTREAM (slip): our link-local = fe80::2 (start_network.sh routes the
-     * prefix here), default route out via the host's fe80::1. */
-    ipv6_addr_t node_ll, host_ll, defroute = IPV6_ADDR_UNSPECIFIED;
-    ipv6_addr_from_str(&node_ll, BR_SLIP_NODE_LL);
-    ipv6_addr_from_str(&host_ll, BR_SLIP_HOST_LL);
-    gnrc_netapi_set(uplink->pid, NETOPT_IPV6_ADDR, 64 << 8,
-                    &node_ll, sizeof(node_ll));
-    int r = gnrc_ipv6_nib_ft_add(&defroute, 0, &host_ll, uplink->pid, 0);
-    if (r < 0) {
-        printf("6LBR: default route add failed (%d)\n", r);
-    }
+    _uplink_config(uplink);
+#if defined(BR_UPLINK_CDC_ECM)
+    _uplink_watch_start(uplink);
+#endif
 
     /* DOWNSTREAM (mstp): install aaaa::/64 — adds our global address, sets the
      * prefix list (RA PIO A=1/L=0), and registers us as the ABR (6CO/ABRO). */

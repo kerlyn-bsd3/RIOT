@@ -30,6 +30,8 @@ ifeq (slip,$(UPLINK))
 else ifeq (cdc-ecm,$(UPLINK))
   USEMODULE += auto_init_usbus
   USEMODULE += usbus_cdc_ecm
+  # per-netif IPv6 event bus: main.c re-adds fe80::2 after each USB link-up
+  USEMODULE += gnrc_netif_bus
   # pid.codes test VID/PID (as mstp_monitor); fine for a bench, not for shipping.
   USB_VID ?= $(USB_VID_TESTING)
   USB_PID ?= $(USB_PID_TESTING)
