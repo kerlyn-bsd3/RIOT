@@ -223,6 +223,8 @@ static void *_status_thread(void *arg)
                (unsigned long)dev.rx.stats.cobs_err,
                (unsigned long)dev.rx.stats.receive_error,
                (unsigned long)dev.txing_drop);
+        printf("   mgr: retry_send_token=%lu\n",
+               (unsigned long)dev.mgr.ctr.retry_send_token);
 
         printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu\n",
                (unsigned long)dev.rx_ind,

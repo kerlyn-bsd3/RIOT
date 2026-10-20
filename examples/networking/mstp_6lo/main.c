@@ -177,6 +177,8 @@ static void *_status_thread(void *arg)
                (unsigned long)dev.rx.stats.cobs_err,
                (unsigned long)dev.rx.stats.receive_error,
                (unsigned long)dev.txing_drop);
+        printf("   mgr: retry_send_token=%lu\n",
+               (unsigned long)dev.mgr.ctr.retry_send_token);
 
         /* THE key line for the ping-reply test: ind = pings handed to RIOT,
          * tx34 = Type-34 frames we transmitted (echo replies once RIOT answers). */

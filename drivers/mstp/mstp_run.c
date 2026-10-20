@@ -126,6 +126,16 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
     dev->txing = false;
 
     dev->rx.silence_timer = 0;                    /* 9.5.5: cleared per octet TX */
+    /*
+     * ...and restart the pump's elapsed-time baseline HERE, at the end of our
+     * transmission. uart_write() blocks for the whole frame (~115 ms for a 1.3 kB
+     * Type-34 at 115200), and the pump computed `elapsed` from a last_ms taken
+     * before it started. Without this, the next pump added that whole transmit time
+     * to the SilenceTimer we just zeroed, so PASS_TOKEN saw Tusage_timeout (20 ms)
+     * already expired and fired RetrySendToken at once: a second Token ~18 us after
+     * the first (Saleae, 2026-10-20, just before lost ping seq 96).
+     */
+    dev->last_ms = ztimer_now(ZTIMER_MSEC);
 }
 
 /* ------------------------------------------------------------------------- *
