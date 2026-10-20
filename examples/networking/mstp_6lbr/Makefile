@@ -90,4 +90,9 @@ CFLAGS += -DCONFIG_GNRC_NETIF_NONSTANDARD_6LO_MTU=1
 MSTP_ADDR ?= 2
 CFLAGS += -DMSTP_SRC_ADDR=$(MSTP_ADDR)U
 
+# The MS/TP driver has a one-slot TX queue (mstp_tx_ipv6 -> -EBUSY while a frame
+# waits for the token). gnrc_netif_pktq queues and retries -EBUSY packets instead of
+# dropping them (_l2_send returns -EBUSY without releasing when this is used).
+USEMODULE += gnrc_netif_pktq
+
 include $(RIOTBASE)/Makefile.include

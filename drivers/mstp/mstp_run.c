@@ -303,6 +303,7 @@ int mstp_start(mstp_t *dev)
     dev->tx_pending = false;
     dev->tx_len = 0;
     dev->tx_ipv6 = 0;
+    dev->tx_busy = 0;
     dev->rx_ready = false;
     dev->rx_data_len = 0;
     dev->fsm_thread = NULL;
@@ -337,6 +338,7 @@ int mstp_tx_ipv6(mstp_t *dev, uint8_t dst, const uint8_t *msdu, uint16_t len)
         return -EMSGSIZE;
     }
     if (dev->tx_pending) {
+        dev->tx_busy++;
         return -EBUSY;   /* one-slot queue: the manager hasn't sent the last yet */
     }
     memcpy(dev->tx_msdu, msdu, len);

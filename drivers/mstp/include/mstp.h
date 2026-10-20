@@ -201,6 +201,7 @@ typedef struct {
     uint8_t           tx_msdu[MSTP_MAX_MSDU];                     /**< staged MSDU   */
     uint8_t           tx_buf[MSTP_IPV6_FRAME_MAX(MSTP_MAX_MSDU) + MSTP_TX_PAD_MAX]; /**< built frame + pad */
     uint32_t          tx_ipv6;        /**< count of Type-34 data frames transmitted */
+    uint32_t          tx_busy;        /**< mstp_tx_ipv6() calls refused: slot occupied (-EBUSY) */
 
     /* One-slot RX hand-off from the FSM thread to the netdev/gnrc side. indicate()
      * copies the decoded MSDU here and raises NETDEV_EVENT_ISR; the netif thread's

@@ -224,11 +224,12 @@ static void *_status_thread(void *arg)
                (unsigned long)dev.rx.stats.receive_error,
                (unsigned long)dev.txing_drop);
 
-        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu\n",
+        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu\n",
                (unsigned long)dev.rx_ind,
                (unsigned)dev.rx_ind_last_ft,
                (unsigned)dev.rx_ind_last_len,
-               (unsigned long)dev.tx_ipv6);
+               (unsigned long)dev.tx_ipv6,
+               (unsigned long)dev.tx_busy);
 
         while (dev.ev_tail != dev.ev_head) {
             const mstp_ev_t *e = &dev.evlog[dev.ev_tail & (MSTP_EVLOG_LEN - 1U)];
@@ -302,6 +303,14 @@ static int _l2_send(gnrc_netif_t *netif, gnrc_pktsnip_t *pkt)
     }
 
     int res = mstp_tx_ipv6(d, dst, _msdu, (uint16_t)len);
+#if IS_USED(MODULE_GNRC_NETIF_PKTQ)
+    /* One-slot driver queue full: hand the packet back UNRELEASED; gnrc_netif_pktq
+     * keeps it and retries (every CONFIG_GNRC_NETIF_PKTQ_TIMER_US) instead of the
+     * silent drop that cost ~1.7% of -s 1232 pings (2026-10-20). */
+    if (res == -EBUSY) {
+        return -EBUSY;
+    }
+#endif
     gnrc_pktbuf_release(pkt);
     return (res == 0) ? (int)len : res;
 }
