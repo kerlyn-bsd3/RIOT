@@ -29,4 +29,9 @@ USEMODULE += ztimer
 USEMODULE += ztimer_msec
 USEMODULE += ztimer_usec
 
+# MS/TP This Station address: `make MSTP_ADDR=<n> ...` (default 0). Must be unique
+# on the bus and <= Nmax_manager (8 on this bed). Changing it rebuilds (CFLAGS change).
+MSTP_ADDR ?= 0
+CFLAGS += -DMSTP_SRC_ADDR=$(MSTP_ADDR)U
+
 include $(RIOTBASE)/Makefile.include

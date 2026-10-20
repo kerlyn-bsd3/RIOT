@@ -44,7 +44,7 @@ make BOARD=nrf52840dk term PORT=/dev/ttyACMx    # the native-USB port
 then use the console over the same J-Link:
 
 ```
-make BOARD=nrf52840dk term-rtt
+make BOARD=nrf52840dk CONSOLE=rtt JLINK_SERIAL=<SN> term
 ```
 
 ## Bring up SLIP on the host (the VM)

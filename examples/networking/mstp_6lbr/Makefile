@@ -35,7 +35,7 @@ USEMODULE += auto_init_gnrc_netif
 #  cdc_acm: nRF native USB (2nd cable, 2nd /dev/ttyACM*); `make term PORT=/dev/ttyACMx`.
 #           Boot banner is lost to the USB re-enumeration race after a reset.
 #  rtt:     SEGGER RTT over the same J-Link cable as flash + SLIP (no nRF USB cable);
-#           `make CONSOLE=rtt JLINK_SERIAL=<SN> term-rtt`. RTT buffers output, so the
+#           `make CONSOLE=rtt JLINK_SERIAL=<SN> term` (stdio_rtt selects the J-Link RTT terminal). RTT buffers output, so the
 #           banner survives until the terminal attaches.
 CONSOLE ?= cdc_acm
 ifeq (rtt,$(CONSOLE))
@@ -61,5 +61,10 @@ USEMODULE += ztimer_usec
 # interface to the IPv6 minimum MTU of 1280 unless this is set. With it the
 # mstp netif MTU becomes 1500 (largest unfragmented echo: ping -s 1452).
 CFLAGS += -DCONFIG_GNRC_NETIF_NONSTANDARD_6LO_MTU=1
+
+# MS/TP This Station address: `make MSTP_ADDR=<n> ...` (default 2). Must be unique
+# on the bus and <= Nmax_manager (8 on this bed). Changing it rebuilds (CFLAGS change).
+MSTP_ADDR ?= 2
+CFLAGS += -DMSTP_SRC_ADDR=$(MSTP_ADDR)U
 
 include $(RIOTBASE)/Makefile.include
