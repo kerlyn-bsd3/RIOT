@@ -25,12 +25,9 @@
 #include "ztimer/periodic.h"
 #include "thread.h"
 #include "thread_flags.h"
-#include "irq.h"
 
 #define ENABLE_DEBUG 0
 #include "debug.h"
-
-static void _de_release(void *arg);
 
 /* FSM-thread wake reasons. */
 #define MSTP_TF_RX      (1u << 0)   /**< octet(s) enqueued by the UART ISR       */
@@ -118,64 +115,17 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
     }
     n += pad;
 
-    /* Frame duration on the wire: n octets x 10 bits, + 2 bits of margin so the
-     * release never cuts the last octet early (nRF: lands inside the pad octet;
-     * STM32: uart_write already blocks to TC, so the thread normally wins). */
-    uint32_t tx_us = (uint32_t)((((uint64_t)n * 10U + 2U) * 1000000U) /
-                                dev->params.baud);
-
     ev_put(dev, MSTP_EV_TX, ft, src, dst, 0);     /* trace: about to transmit   */
     if (dev->params.tap) {                        /* bus monitor: our own frame */
         dev->params.tap(dev->params.tap_arg, frame, n, true);
     }
-    /*
-     * DE release must not depend on this (low-priority) thread being scheduled the
-     * moment uart_write() returns: uart_write busy-waits, and if gnrc / USB threads
-     * preempt us near the end of a long frame we resume late, still driving the bus
-     * (DE high, RE off) while the peer — which may legally start 40 bit times after
-     * our last octet — is already replying. Its frame is then lost with no error
-     * counter (2026-10-20: 6LN sent 321 Type-34 frames, 6LBR indicated 313; the 8
-     * missing = the 8 lost pings; all 6LBR RX error counters 0). So also arm a
-     * one-shot ztimer that releases DE and clears txing from ISR context at the
-     * computed end of the frame; whichever comes first wins.
-     */
     dev->txing = true;                            /* ignore our own RX echo (9.5.4) */
     gpio_set(dev->params.de_pin);                 /* enable driver (transmit)   */
-    if (dev->params.tx_done_reg != NULL) {
-        *dev->params.tx_done_reg = 0;             /* forget the previous frame's "done" */
-        ztimer_set(ZTIMER_USEC, &dev->de_timer, tx_us);
-    }
     uart_write(dev->params.uart, frame, n);
-    unsigned state = irq_disable();
-    if (dev->txing) {
-        ztimer_remove(ZTIMER_USEC, &dev->de_timer);   /* on time: we release   */
-        gpio_clear(dev->params.de_pin);           /* release: a clipped stop bit is the pad's */
-        dev->txing = false;
-    }
-    else {
-        dev->de_late++;                           /* the timer already released */
-    }
-    irq_restore(state);
+    gpio_clear(dev->params.de_pin);               /* release: a clipped stop bit is the pad's */
+    dev->txing = false;
 
     dev->rx.silence_timer = 0;                    /* 9.5.5: cleared per octet TX */
-}
-
-/* ztimer callback (ISR context): nominal end of our frame on the wire. Release DE
- * only if the UART really is done; if the write started late (FSM thread preempted
- * between arming and STARTTX), check again one octet time later. */
-static void _de_release(void *arg)
-{
-    mstp_t *dev = arg;
-    if (!dev->txing) {
-        return;
-    }
-    if (*dev->params.tx_done_reg == 0) {
-        dev->de_wait++;
-        ztimer_set(ZTIMER_USEC, &dev->de_timer, 10UL * 1000000UL / dev->params.baud);
-        return;
-    }
-    gpio_clear(dev->params.de_pin);
-    dev->txing = false;
 }
 
 /* ------------------------------------------------------------------------- *
@@ -345,10 +295,6 @@ int mstp_start(mstp_t *dev)
     mstp_ring_reset(&dev->ring);
     dev->txing = false;
     dev->txing_drop = 0;
-    dev->de_late = 0;
-    dev->de_wait = 0;
-    dev->de_timer.callback = _de_release;
-    dev->de_timer.arg = dev;
     dev->last_frames_ok = 0;
     dev->last_frames_inv = 0;
     dev->rx_ind = 0;

@@ -135,18 +135,6 @@ typedef struct {
     uint32_t ore_mask;                /**< ORE bit within *ore_sr (e.g. USART_ISR_ORE)       */
 
     /*
-     * Optional "transmission finished" hardware event (nRF: &NRF_UARTEx->EVENTS_ENDTX;
-     * nonzero once the last octet has gone out). When set, an ISR-context ztimer
-     * releases DE at the frame's end even if the FSM thread is preempted — but it
-     * first checks this flag and re-arms (one octet time) while the UART is not yet
-     * done, so a thread preempted BEFORE the write started can't get its frame cut
-     * short (the 2026-10-20 30%-loss bug of a timer-only release). The driver zeroes
-     * it just before each write. NULL = no timer; DE is released only by the thread
-     * after uart_write() returns (previous behaviour).
-     */
-    volatile uint32_t *tx_done_reg;
-
-    /*
      * Trailing pad octets (0xFF) appended to every transmitted frame, contiguous in
      * the SAME uart_write(). MS/TP permits trailing pad and a receiver ignores a
      * stray 0xFF in IDLE (preamble is 0x55 0xFF). On a UART whose blocking write
@@ -187,13 +175,6 @@ typedef struct {
                                        ONLY silent inbound-drop path. A peer's
                                        reply arriving while this is set is lost
                                        with no error/CRC counter — watch it.     */
-    ztimer_t          de_timer;   /**< releases DE + txing at the computed end of
-                                       the frame from ISR context, so a preempted
-                                       FSM thread can't hold the bus (2026-10-20) */
-    uint32_t          de_late;    /**< frames whose DE the timer released because
-                                       the FSM thread was still preempted/busy   */
-    uint32_t          de_wait;    /**< timer expiries that found the UART not yet
-                                       done (write started late) and re-armed    */
     uint32_t          last_ms;    /**< ztimer_now at the previous pump           */
     uint32_t          last_frames_inv; /**< to detect newly seen invalid frames  */
 
