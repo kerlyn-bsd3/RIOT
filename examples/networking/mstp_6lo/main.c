@@ -54,6 +54,7 @@
 #define MSTP_BOARD_NAME     "nrf52840dk"
 #define MSTP_UART_DEV       UART_DEV(1)
 #define MSTP_DE_PIN         GPIO_PIN(1, 3)        /* Arduino D2 = P1.03 */
+#define MSTP_TX_DONE_REG    (&NRF_UARTE1->EVENTS_ENDTX)  /* UART_DEV(1); see mstp_params_t */
 #define MSTP_TX_PAD_OCTETS  (1U)             /* one 0xFF pad; ENDTX fires pre-stop-bit */
 
 #elif defined(BOARD_NUCLEO_F767ZI)
@@ -81,6 +82,9 @@
 #endif
 
 /* Common defaults (a board block above may already define MSTP_ORE_* / pad). */
+#ifndef MSTP_TX_DONE_REG
+#define MSTP_TX_DONE_REG    (NULL)
+#endif
 #ifndef MSTP_ORE_SR
 #define MSTP_ORE_SR         (NULL)        /* no overrun-register peek (e.g. nRF EasyDMA) */
 #endif
@@ -180,13 +184,14 @@ static void *_status_thread(void *arg)
 
         /* THE key line for the ping-reply test: ind = pings handed to RIOT,
          * tx34 = Type-34 frames we transmitted (echo replies once RIOT answers). */
-        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu de_late=%lu\n",
+        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu de_late=%lu de_wait=%lu\n",
                (unsigned long)dev.rx_ind,
                (unsigned)dev.rx_ind_last_ft,
                (unsigned)dev.rx_ind_last_len,
                (unsigned long)dev.tx_ipv6,
                (unsigned long)dev.tx_busy,
-               (unsigned long)dev.de_late);
+               (unsigned long)dev.de_late,
+               (unsigned long)dev.de_wait);
 
         /* Drain the event trace, skipping routine Token traffic (summarised by
          * the FSM's own counters); show every RXINV plus any non-Token frame so
@@ -339,6 +344,7 @@ int main(void)
         .mac_addr = MSTP_SRC_ADDR,
         .ore_sr   = MSTP_ORE_SR,
         .ore_mask = MSTP_ORE_MASK,
+        .tx_done_reg = MSTP_TX_DONE_REG,
         .tx_pad_octets = MSTP_TX_PAD_OCTETS,
     };
     mstp_setup(&dev, &params, 0);

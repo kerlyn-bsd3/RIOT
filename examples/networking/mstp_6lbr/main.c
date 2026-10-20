@@ -93,6 +93,7 @@
 #define MSTP_BOARD_NAME     "nrf52840dk"
 #define MSTP_UART_DEV       UART_DEV(1)
 #define MSTP_DE_PIN         GPIO_PIN(1, 3)        /* Arduino D2 = P1.03 */
+#define MSTP_TX_DONE_REG    (&NRF_UARTE1->EVENTS_ENDTX)  /* UART_DEV(1); see mstp_params_t */
 #define MSTP_TX_PAD_OCTETS  (1U)             /* one 0xFF pad; ENDTX fires pre-stop-bit */
 /*
  * J-Link OB VCOM auto-detects UART hardware flow control from the target's RTS line
@@ -141,6 +142,9 @@
 #endif
 
 /* Common defaults (a board block above may already define MSTP_ORE_* / pad). */
+#ifndef MSTP_TX_DONE_REG
+#define MSTP_TX_DONE_REG    (NULL)
+#endif
 #ifndef MSTP_ORE_SR
 #define MSTP_ORE_SR         (NULL)
 #endif
@@ -224,13 +228,14 @@ static void *_status_thread(void *arg)
                (unsigned long)dev.rx.stats.receive_error,
                (unsigned long)dev.txing_drop);
 
-        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu de_late=%lu\n",
+        printf("   data: ind=%lu (last ft=%u len=%u)  tx34=%lu txbusy=%lu de_late=%lu de_wait=%lu\n",
                (unsigned long)dev.rx_ind,
                (unsigned)dev.rx_ind_last_ft,
                (unsigned)dev.rx_ind_last_len,
                (unsigned long)dev.tx_ipv6,
                (unsigned long)dev.tx_busy,
-               (unsigned long)dev.de_late);
+               (unsigned long)dev.de_late,
+               (unsigned long)dev.de_wait);
 
         while (dev.ev_tail != dev.ev_head) {
             const mstp_ev_t *e = &dev.evlog[dev.ev_tail & (MSTP_EVLOG_LEN - 1U)];
@@ -529,6 +534,7 @@ int main(void)
         .mac_addr = MSTP_SRC_ADDR,
         .ore_sr   = MSTP_ORE_SR,
         .ore_mask = MSTP_ORE_MASK,
+        .tx_done_reg = MSTP_TX_DONE_REG,
         .tx_pad_octets = MSTP_TX_PAD_OCTETS,
     };
     mstp_setup(&dev, &params, 0);

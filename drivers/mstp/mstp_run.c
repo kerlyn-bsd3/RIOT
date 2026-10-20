@@ -141,7 +141,10 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
      */
     dev->txing = true;                            /* ignore our own RX echo (9.5.4) */
     gpio_set(dev->params.de_pin);                 /* enable driver (transmit)   */
-    ztimer_set(ZTIMER_USEC, &dev->de_timer, tx_us);
+    if (dev->params.tx_done_reg != NULL) {
+        *dev->params.tx_done_reg = 0;             /* forget the previous frame's "done" */
+        ztimer_set(ZTIMER_USEC, &dev->de_timer, tx_us);
+    }
     uart_write(dev->params.uart, frame, n);
     unsigned state = irq_disable();
     if (dev->txing) {
@@ -157,10 +160,20 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
     dev->rx.silence_timer = 0;                    /* 9.5.5: cleared per octet TX */
 }
 
-/* ztimer callback (ISR context): end of our frame on the wire — stop driving. */
+/* ztimer callback (ISR context): nominal end of our frame on the wire. Release DE
+ * only if the UART really is done; if the write started late (FSM thread preempted
+ * between arming and STARTTX), check again one octet time later. */
 static void _de_release(void *arg)
 {
     mstp_t *dev = arg;
+    if (!dev->txing) {
+        return;
+    }
+    if (*dev->params.tx_done_reg == 0) {
+        dev->de_wait++;
+        ztimer_set(ZTIMER_USEC, &dev->de_timer, 10UL * 1000000UL / dev->params.baud);
+        return;
+    }
     gpio_clear(dev->params.de_pin);
     dev->txing = false;
 }
@@ -333,6 +346,7 @@ int mstp_start(mstp_t *dev)
     dev->txing = false;
     dev->txing_drop = 0;
     dev->de_late = 0;
+    dev->de_wait = 0;
     dev->de_timer.callback = _de_release;
     dev->de_timer.arg = dev;
     dev->last_frames_ok = 0;
