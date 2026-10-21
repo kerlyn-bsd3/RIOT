@@ -222,6 +222,7 @@ typedef struct {
     uint16_t          rx_data_len;
     uint8_t           rx_data_src;
     volatile bool     rx_ready;
+    uint32_t          rx_drop;    /**< indicated MSDUs dropped: hand-off slot busy */
 
     char              fsm_stack[MSTP_THREAD_STACKSIZE];
 } mstp_t;

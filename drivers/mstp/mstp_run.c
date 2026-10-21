@@ -171,6 +171,9 @@ static void _indicate(void *ctx, uint8_t ft, uint8_t src,
         dev->rx_ready    = true;
         netdev_trigger_event_isr(&dev->netdev);
     }
+    else if (dev->netdev.event_callback != NULL && data != NULL) {
+        dev->rx_drop++;          /* hand-off slot still full (or oversize): lost */
+    }
 }
 
 /* ------------------------------------------------------------------------- *
@@ -321,6 +324,7 @@ int mstp_start(mstp_t *dev)
     dev->tx_ipv6 = 0;
     dev->tx_busy = 0;
     dev->rx_ready = false;
+    dev->rx_drop = 0;
     dev->rx_data_len = 0;
     dev->fsm_thread = NULL;
 
