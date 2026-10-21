@@ -80,6 +80,10 @@ static void _send_frame(void *ctx, uint8_t ft, uint8_t dst, uint8_t src,
          */
         n = mstp_build_ipv6_frame(src, dst, data, len, dev->tx_buf,
                                   sizeof(dev->tx_buf) - MSTP_TX_PAD_MAX);
+        if (dev->txq_inflight) {             /* MSDU now copied into tx_buf:   */
+            dev->txq_inflight = false;       /* free its queue slot            */
+            dev->txq_tail++;
+        }
         if (n == 0U) {
             DEBUG("mstp: ipv6 frame build failed (dst=%u len=%u)\n",
                   (unsigned)dst, (unsigned)len);
@@ -173,21 +177,22 @@ static void _indicate(void *ctx, uint8_t ft, uint8_t src,
  * next_tx — 135-2024 9.5.6.3 USE_TOKEN: hand the manager the next queued frame
  * to transmit. Frame Type 34 is no-reply data, so the manager takes the
  * SendNoWait path (send_frame -> DONE_WITH_TOKEN). Returns false (NothingToSend)
- * when the one-slot TX queue is empty. Called only from the FSM thread, only
+ * when the TX queue is empty. Called only from the FSM thread, only
  * while we hold the token — that's how gnrc's "send whenever" becomes MS/TP's
  * "send when it's your turn".
  * ------------------------------------------------------------------------- */
 static bool _next_tx(void *ctx, mstp_tx_frame_t *out)
 {
     mstp_t *dev = ctx;
-    if (!dev->tx_pending) {
+    if (dev->txq_tail == dev->txq_head) {
         return false;
     }
+    unsigned slot = dev->txq_tail % MSTP_TX_QUEUE_LEN;
     out->frame_type = MSTP_FRAME_TYPE_IPV6;
-    out->dst        = dev->tx_dst;
-    out->data       = dev->tx_msdu;
-    out->len        = dev->tx_len;
-    dev->tx_pending = false;   /* dequeued; handed to send_frame in this same step */
+    out->dst        = dev->txq[slot].dst;
+    out->data       = dev->txq[slot].msdu;
+    out->len        = dev->txq[slot].len;
+    dev->txq_inflight = true;  /* send_frame frees the slot once tx_buf is built */
     return true;
 }
 
@@ -310,8 +315,9 @@ int mstp_start(mstp_t *dev)
     dev->rx_ind = 0;
     dev->rx_ind_last_len = 0;
     dev->rx_ind_last_ft = 0;
-    dev->tx_pending = false;
-    dev->tx_len = 0;
+    dev->txq_head = 0;
+    dev->txq_tail = 0;
+    dev->txq_inflight = false;
     dev->tx_ipv6 = 0;
     dev->tx_busy = 0;
     dev->rx_ready = false;
@@ -347,13 +353,15 @@ int mstp_tx_ipv6(mstp_t *dev, uint8_t dst, const uint8_t *msdu, uint16_t len)
     if (len == 0U || len > MSTP_MAX_MSDU) {
         return -EMSGSIZE;
     }
-    if (dev->tx_pending) {
+    if (dev->txq_head - dev->txq_tail >= MSTP_TX_QUEUE_LEN) {
         dev->tx_busy++;
-        return -EBUSY;   /* one-slot queue: the manager hasn't sent the last yet */
+        return -EBUSY;   /* queue full: MSTP_TX_QUEUE_LEN MSDUs already waiting for the token */
     }
-    memcpy(dev->tx_msdu, msdu, len);
-    dev->tx_dst     = dst;
-    dev->tx_len     = len;
-    dev->tx_pending = true;   /* the FSM thread's next USE_TOKEN transmits it */
+    unsigned slot = dev->txq_head % MSTP_TX_QUEUE_LEN;
+    memcpy(dev->txq[slot].msdu, msdu, len);
+    dev->txq[slot].dst = dst;
+    dev->txq[slot].len = len;
+    __asm__ volatile ("" ::: "memory");      /* slot contents before publishing */
+    dev->txq_head++;          /* the FSM thread's next USE_TOKEN transmits it */
     return 0;
 }

@@ -262,14 +262,9 @@ static int _l2_send(gnrc_netif_t *netif, gnrc_pktsnip_t *pkt)
     }
 
     int res = mstp_tx_ipv6(d, dst, _msdu, (uint16_t)len);
-#if IS_USED(MODULE_GNRC_NETIF_PKTQ)
-    /* One-slot driver queue full: hand the packet back UNRELEASED; gnrc_netif_pktq
-     * keeps it and retries (every CONFIG_GNRC_NETIF_PKTQ_TIMER_US) instead of the
-     * silent drop that cost ~1.7% of -s 1232 pings (2026-10-20). */
-    if (res == -EBUSY) {
-        return -EBUSY;
-    }
-#endif
+    /* Queue full (-EBUSY, counted as txbusy) or other error: drop. The driver's
+     * TX ring (MSTP_TX_QUEUE_LEN) replaces gnrc_netif_pktq, which never re-sent
+     * nor freed refused packets (2026-10-21 leak ⇒ forwarding stall). */
     gnrc_pktbuf_release(pkt);
     return (res == 0) ? (int)len : res;
 }

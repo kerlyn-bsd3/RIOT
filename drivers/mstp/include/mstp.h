@@ -50,6 +50,10 @@ extern "C" {
 #endif
 
 /** @brief Priority of the MS/TP FSM thread (slightly above main). */
+#ifndef MSTP_TX_QUEUE_LEN
+#define MSTP_TX_QUEUE_LEN       (4U)    /**< outbound Type-34 MSDUs that can wait for the token */
+#endif
+
 #ifndef MSTP_THREAD_PRIORITY
 #define MSTP_THREAD_PRIORITY    (THREAD_PRIORITY_MAIN - 1)
 #endif
@@ -191,14 +195,21 @@ typedef struct {
     uint16_t          rx_ind_last_len;/**< decoded MSDU length of the last one      */
     uint8_t           rx_ind_last_ft; /**< frame type of the last one (34 = IPv6)  */
 
-    /* One-slot TX queue for outbound IPv6 (Frame Type 34). mstp_tx_ipv6() (called
-     * by the netdev _send, or directly for bring-up) copies the raw MSDU here; the
-     * Manager FSM's next_tx dequeues and the SendFrame port transmits it as a
-     * Type-34 ONLY while this node holds the token (9.5.6.3 USE_TOKEN). */
-    volatile bool     tx_pending;     /**< an MSDU is queued for transmission       */
-    uint8_t           tx_dst;         /**< its destination MS/TP address            */
-    uint16_t          tx_len;         /**< its length                               */
-    uint8_t           tx_msdu[MSTP_MAX_MSDU];                     /**< staged MSDU   */
+    /* TX queue for outbound IPv6 (Frame Type 34): a ring of MSTP_TX_QUEUE_LEN
+     * copied MSDUs. mstp_tx_ipv6() (netif thread) copies into slot[head] and
+     * advances head; the Manager FSM's next_tx (FSM thread, only while we hold the
+     * token, 9.5.6.3 USE_TOKEN) hands slot[tail] to SendFrame, which advances tail
+     * as soon as the frame is built into tx_buf. Single producer / single
+     * consumer. Was one slot (+ gnrc_netif_pktq, which leaked every refused packet:
+     * 2026-10-21, 22 refusals ⇒ ~22 lost pings + a full pktbuf ⇒ forwarding stall). */
+    struct {
+        uint8_t       dst;            /**< destination MS/TP address                */
+        uint16_t      len;            /**< MSDU length                              */
+        uint8_t       msdu[MSTP_MAX_MSDU];
+    } txq[MSTP_TX_QUEUE_LEN];
+    volatile uint32_t txq_head;       /**< producer index (netif thread)            */
+    volatile uint32_t txq_tail;       /**< consumer index (FSM thread)              */
+    bool              txq_inflight;   /**< slot[tail] handed to send_frame          */
     uint8_t           tx_buf[MSTP_IPV6_FRAME_MAX(MSTP_MAX_MSDU) + MSTP_TX_PAD_MAX]; /**< built frame + pad */
     uint32_t          tx_ipv6;        /**< count of Type-34 data frames transmitted */
     uint32_t          tx_busy;        /**< mstp_tx_ipv6() calls refused: slot occupied (-EBUSY) */
@@ -243,7 +254,7 @@ int mstp_start(mstp_t *dev);
 /**
  * @brief   Queue a raw IPv6 MSDU for transmission as a Frame Type 34 (9.5.5.2).
  *
- * Copies @p msdu into the device's one-slot TX queue; the Manager FSM COBS +
+ * Copies @p msdu into the device's TX queue (MSTP_TX_QUEUE_LEN slots); the Manager FSM COBS +
  * CRC-32K encodes and transmits it the next time this node holds the token. This
  * is the hook the netdev @c _send() will call; usable directly for bring-up/tests.
  *
