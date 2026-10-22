@@ -200,6 +200,35 @@ static int _cmd_status(int argc, char **argv)
 }
 SHELL_COMMAND(status, "toggle the periodic mstp status printing", _cmd_status);
 
+#ifdef GNRC_IPV6_DROP_COUNTERS
+/* Instrumentation (2026-10-22): sys/net/gnrc/network_layer/ipv6/gnrc_ipv6.c built
+ * with -DGNRC_IPV6_DROP_COUNTERS counts each place it discards a packet. */
+extern uint32_t gnrc_ipv6_dropctr[24];
+static const char *const _ipv6_drop_name[] = {
+    "rx: not IPv6", "rx: start_write failed", "rx: mark hdr failed",
+    "rx: hop limit 0", "rx: len 0 but nh != NONXT", "rx: bad payload length",
+    "rx: hop-by-hop opt consumed", "fwd: link-local src/dst (not forwarded)",
+    "fwd: reverse_snips failed", "fwd: hop limit reached 0",
+    "send: netif hdr write access", "send: unexpected type",
+    "send: dst unspecified", "send: ipv6 hdr write access",
+    "send: NIB next hop failed", "send: netif hdr alloc failed",
+    "iface: packet too big", "iface: no 6lo thread (dispatch failed)",
+    "iface: gnrc_netif_send failed", "fwd: FORWARDED (count, not a drop)",
+};
+
+static int _cmd_ipv6drops(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    for (unsigned i = 0; i < ARRAY_SIZE(_ipv6_drop_name); i++) {
+        printf("%2u %-40s %lu\n", i, _ipv6_drop_name[i],
+               (unsigned long)gnrc_ipv6_dropctr[i]);
+    }
+    return 0;
+}
+SHELL_COMMAND(ipv6drops, "gnrc_ipv6 drop counters (needs -DGNRC_IPV6_DROP_COUNTERS)",
+              _cmd_ipv6drops);
+#endif
+
 static void *_status_thread(void *arg)
 {
     (void)arg;

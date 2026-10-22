@@ -46,6 +46,16 @@
 #include "net/gnrc/ipv6.h"
 
 #define ENABLE_DEBUG        0
+
+/* 6LoBAC instrumentation (2026-10-22): count every place this file discards a
+ * packet (index = position in the list printed by the mstp_6lbr `ipv6drops`
+ * shell command; 19 = forwarded). Compiled only with -DGNRC_IPV6_DROP_COUNTERS. */
+#ifdef GNRC_IPV6_DROP_COUNTERS
+uint32_t gnrc_ipv6_dropctr[24];
+#define DROPCTR(i)  (gnrc_ipv6_dropctr[(i)]++)
+#else
+#define DROPCTR(i)  ((void)0)
+#endif
 #include "debug.h"
 
 #define _MAX_L2_ADDR_LEN    (8U)
@@ -391,6 +401,7 @@ static void _send_to_iface(gnrc_netif_t *netif, gnrc_pktsnip_t *pkt)
     assert(netif != NULL);
     gnrc_netif_hdr_set_netif(pkt->data, netif);
     if (gnrc_pkt_len(pkt->next) > netif->ipv6.mtu) {
+        DROPCTR(16);
         DEBUG("ipv6: packet too big\n");
         gnrc_icmpv6_error_pkt_too_big_send(netif->ipv6.mtu, pkt);
         gnrc_pktbuf_release_error(pkt, EMSGSIZE);
@@ -414,6 +425,7 @@ static void _send_to_iface(gnrc_netif_t *netif, gnrc_pktsnip_t *pkt)
     if (gnrc_netif_is_6lo(netif)) {
         DEBUG("ipv6: send to 6LoWPAN instead\n");
         if (!gnrc_netapi_dispatch_send(GNRC_NETTYPE_SIXLOWPAN, GNRC_NETREG_DEMUX_CTX_ALL, pkt)) {
+            DROPCTR(17);
             DEBUG("ipv6: no 6LoWPAN thread found\n");
             gnrc_pktbuf_release(pkt);
         }
@@ -421,6 +433,7 @@ static void _send_to_iface(gnrc_netif_t *netif, gnrc_pktsnip_t *pkt)
     }
 #endif
     if (gnrc_netif_send(netif, pkt) < 1) {
+        DROPCTR(18);
         DEBUG("ipv6: unable to send packet\n");
         gnrc_pktbuf_release(pkt);
     }
@@ -435,6 +448,7 @@ static gnrc_pktsnip_t *_create_netif_hdr(uint8_t *dst_l2addr,
     gnrc_netif_hdr_t *hdr;
 
     if (netif_hdr == NULL) {
+        DROPCTR(15);
         DEBUG("ipv6: error on interface header allocation, dropping packet\n");
         gnrc_pktbuf_release(pkt);
         return NULL;
@@ -624,6 +638,7 @@ static void _send_unicast(gnrc_pktsnip_t *pkt, bool prep_hdr,
     if (gnrc_ipv6_nib_get_next_hop_l2addr(&ipv6_hdr->dst, netif, pkt,
                                           &nce) < 0) {
         /* packet is released by NIB */
+        DROPCTR(14);
         DEBUG("ipv6: no link-layer address or interface for next hop to %s\n",
               ipv6_addr_to_str(addr_str, &ipv6_hdr->dst, sizeof(addr_str)));
         return;
@@ -804,6 +819,7 @@ static void _send(gnrc_pktsnip_t *pkt, bool prep_hdr)
 
         tmp_pkt = gnrc_pktbuf_start_write(pkt);
         if (tmp_pkt == NULL) {
+            DROPCTR(10);
             DEBUG("ipv6: unable to get write access to netif header, dropping packet\n");
             gnrc_pktbuf_release(pkt);
             return;
@@ -816,11 +832,13 @@ static void _send(gnrc_pktsnip_t *pkt, bool prep_hdr)
         pkt = gnrc_pktbuf_remove_snip(tmp_pkt, tmp_pkt);
     }
     if (pkt->type != GNRC_NETTYPE_IPV6) {
+        DROPCTR(11);
         DEBUG("ipv6: unexpected packet type\n");
         gnrc_pktbuf_release_error(pkt, EINVAL);
         return;
     }
     if (ipv6_addr_is_unspecified(&((ipv6_hdr_t *)pkt->data)->dst)) {
+        DROPCTR(12);
         DEBUG("ipv6: destination address is unspecified address (::), "
               "dropping packet \n");
         gnrc_pktbuf_release_error(pkt, EINVAL);
@@ -828,6 +846,7 @@ static void _send(gnrc_pktsnip_t *pkt, bool prep_hdr)
     }
     tmp_pkt = gnrc_pktbuf_start_write(pkt);
     if (tmp_pkt == NULL) {
+        DROPCTR(13);
         DEBUG("ipv6: unable to get write access to IPv6 header, dropping packet\n");
         gnrc_pktbuf_release(pkt);
         return;
@@ -901,6 +920,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
 
     if ((pkt->data == NULL) || (pkt->size < sizeof(ipv6_hdr_t)) ||
         !ipv6_hdr_is(pkt->data)) {
+        DROPCTR(0);
         DEBUG("ipv6: Received packet was not IPv6, dropping packet\n");
         gnrc_pktbuf_release(pkt);
         return;
@@ -925,6 +945,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
     ipv6 = gnrc_pktbuf_start_write(pkt);
 
     if (ipv6 == NULL) {
+        DROPCTR(1);
         DEBUG("ipv6: unable to get write access to packet, drop it\n");
         gnrc_pktbuf_release(pkt);
         return;
@@ -937,6 +958,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
     pkt->type = GNRC_NETTYPE_UNDEF; /* snip is no longer IPv6 */
 
     if (ipv6 == NULL) {
+        DROPCTR(2);
         DEBUG("ipv6: error marking IPv6 header, dropping packet\n");
         gnrc_pktbuf_release(pkt);
         return;
@@ -948,6 +970,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
         /* This is an illegal value in any case, not just in case of a
          * forwarding step, so *do not* check it together with ((--hdr->hl) > 0)
          * in forwarding code below */
+        DROPCTR(3);
         DEBUG("ipv6: packet was received with hop-limit 0\n");
         gnrc_icmpv6_error_time_exc_send(ICMPV6_ERROR_TIME_EXC_HL, pkt);
         gnrc_pktbuf_release_error(pkt, ETIMEDOUT);
@@ -959,6 +982,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
 
     if ((ipv6_len == 0) && (first_nh != PROTNUM_IPV6_NONXT)) {
         /* this doesn't even make sense */
+        DROPCTR(4);
         DEBUG("ipv6: payload length 0, but next header not NONXT\n");
         gnrc_pktbuf_release(pkt);
         return;
@@ -969,6 +993,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
         gnrc_pktbuf_realloc_data(pkt, byteorder_ntohs(hdr->len));
     }
     else if (ipv6_len > (gnrc_pkt_len_upto(pkt, GNRC_NETTYPE_IPV6) - sizeof(ipv6_hdr_t))) {
+        DROPCTR(5);
         DEBUG("ipv6: invalid payload length: %d, actual: %d, dropping packet\n",
               (int) byteorder_ntohs(hdr->len),
               (int) (gnrc_pkt_len_upto(pkt, GNRC_NETTYPE_IPV6) - sizeof(ipv6_hdr_t)));
@@ -985,6 +1010,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
           first_nh, byteorder_ntohs(hdr->len));
 
     if ((pkt = gnrc_ipv6_ext_process_hopopt(pkt, &first_nh)) == NULL) {
+        DROPCTR(6);
         DEBUG("ipv6: packet's extension header was erroneous or packet was "
               "consumed due to it\n");
         return;
@@ -1001,6 +1027,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
          * links."
          */
         if ((ipv6_addr_is_link_local(&(hdr->src))) || (ipv6_addr_is_link_local(&(hdr->dst)))) {
+            DROPCTR(7);
             DEBUG("ipv6: do not forward packets with link-local source or"
                   " destination address\n");
 #ifdef MODULE_GNRC_ICMPV6_ERROR
@@ -1017,6 +1044,7 @@ static void _receive(gnrc_pktsnip_t *pkt)
         }
         /* TODO: check if receiving interface is router */
         else if (--(hdr->hl) > 0) {  /* drop packets that *reach* Hop Limit 0 */
+            DROPCTR(19);
             DEBUG("ipv6: forward packet to next hop\n");
 
             /* remove L2 headers around IPV6 */
@@ -1028,12 +1056,14 @@ static void _receive(gnrc_pktsnip_t *pkt)
                 _send(pkt, false);
             }
             else {
+                DROPCTR(8);
                 DEBUG("ipv6: unable to reverse pkt from receive order to send "
                       "order; dropping it\n");
             }
             return;
         }
         else {
+            DROPCTR(9);
             DEBUG("ipv6: hop limit reached 0: drop packet\n");
             gnrc_icmpv6_error_time_exc_send(ICMPV6_ERROR_TIME_EXC_HL, pkt);
             gnrc_pktbuf_release_error(pkt, ETIMEDOUT);
