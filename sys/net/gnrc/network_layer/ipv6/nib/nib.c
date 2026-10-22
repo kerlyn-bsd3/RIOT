@@ -13,6 +13,7 @@
  * @author  Martine Lenders <m.lenders@fu-berlin.de>
  */
 
+#include <stdio.h>
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -1497,6 +1498,19 @@ static bool _resolve_addr(const ipv6_addr_t *dst, gnrc_netif_t *netif,
          * A LoWPAN node is not required to maintain a minimum of one buffer
          * per neighbor as specified in [RFC4861], since packets are never
          * queued while waiting for address resolution. */
+#ifdef NIB_LOG_6LO_DROP
+        /* 6LoBAC instrumentation (2026-10-22): this silent drop is suspected of
+         * the ~2% of forwarded pings lost by the mstp_6lbr. Log destination and
+         * the neighbor-cache entry's info word (NUD/AR state) when it happens. */
+        {
+            char _a[IPV6_ADDR_MAX_STR_LEN];
+            printf("nib: 6lo drop to %s if %u nce=%s info=0x%04x\n",
+                   ipv6_addr_to_str(_a, dst, sizeof(_a)),
+                   netif ? (unsigned)netif->pid : 0U,
+                   entry ? "yes" : "none",
+                   entry ? (unsigned)entry->info : 0U);
+        }
+#endif
         gnrc_pktbuf_release(pkt);
         return false;
     }
