@@ -31,6 +31,7 @@
 #include "usb.h"
 #include "usb/descriptor.h"
 #include "bitarithm.h"
+#include "irq.h"
 
 #define ENABLE_DEBUG 0
 #include "debug.h"
@@ -533,8 +534,22 @@ static int _ep_xmit(usbdev_ep_t *ep, uint8_t *buf, size_t len)
         /* Pre-Setup the EasyDMA settings */
         usbdev->device->EPOUT[ep->num].PTR = (uint32_t)(intptr_t)buf;
         usbdev->device->EPOUT[ep->num].MAXCNT = (uint32_t)(intptr_t)len;
-        /* Write nonzero value to EPOUT to indicate ready */
-        usbdev->device->SIZE.EPOUT[ep->num] = 1;
+        /*
+         * Write nonzero value to SIZE.EPOUT to indicate ready — but NOT if a
+         * packet is already waiting. The USBD ACKs the next OUT packet as soon
+         * as the previous EasyDMA transfer ends (ENDEPOUT), without waiting for
+         * this write (Nordic DevZone 35362); writing SIZE.EPOUT then "clears the
+         * endpoint" and discards that already-ACKed packet. Seen 2026-10-22: in
+         * ~2% of CDC-ECM frames the last full 64-byte packet vanished and the
+         * short tail packet landed in its place (frame short by exactly 64).
+         * If EPDATASTATUS already flags this endpoint, leave the buffer alone:
+         * the pending ESR will DMA it into the PTR/MAXCNT set above.
+         */
+        unsigned state = irq_disable();
+        if (!(usbdev->device->EPDATASTATUS & (1 << (ep->num + 16)))) {
+            usbdev->device->SIZE.EPOUT[ep->num] = 1;
+        }
+        irq_restore(state);
     }
     return len;
 }
