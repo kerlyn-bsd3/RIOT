@@ -1001,6 +1001,29 @@ static void _receive(gnrc_pktsnip_t *pkt)
                (unsigned)(gnrc_pkt_len_upto(pkt, GNRC_NETTYPE_IPV6) - sizeof(ipv6_hdr_t)),
                (int)byteorder_ntohs(hdr->len) -
                (int)(gnrc_pkt_len_upto(pkt, GNRC_NETTYPE_IPV6) - sizeof(ipv6_hdr_t)));
+        /* For a Linux ping6 Echo Request (ICMPv6 type 128) the data after the
+         * 16-byte timestamp is the pattern data[i] = i & 0xff: find where the
+         * received copy first departs from it, i.e. where the hole is. Frame
+         * offset = 14 (Ethernet) + 40 (IPv6) + 8 (ICMPv6) + i; USB full-speed
+         * bulk packet = frame offset / 64. */
+        if ((first_nh == PROTNUM_ICMPV6) && (pkt != ipv6) && (pkt->size > 24) &&
+            (((uint8_t *)pkt->data)[0] == 128)) {
+            const uint8_t *d = (const uint8_t *)pkt->data + 8;
+            unsigned n = pkt->size - 8, i;
+            for (i = 16; i < n; i++) {
+                if (d[i] != (uint8_t)i) {
+                    break;
+                }
+            }
+            if (i < n) {
+                printf("ipv6:   echo data departs from pattern at data[%u] (frame off %u,"
+                       " USB pkt #%u): got 0x%02x, expected 0x%02x\n",
+                       i, 62U + i, (62U + i) / 64U, d[i], (unsigned)(uint8_t)i);
+            }
+            else {
+                printf("ipv6:   echo data intact up to data[%u] (tail missing)\n", n);
+            }
+        }
 #endif
         DEBUG("ipv6: invalid payload length: %d, actual: %d, dropping packet\n",
               (int) byteorder_ntohs(hdr->len),
