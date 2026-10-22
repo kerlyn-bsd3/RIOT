@@ -623,10 +623,20 @@ static void _ep_esr(usbdev_ep_t *ep)
         }
         else {
             if (usbdev->device->EPDATASTATUS & 1 << (ep->num + 16)) {
+                /*
+                 * Clear the status bit BEFORE the DMA. Once ENDEPOUT fires the
+                 * endpoint accepts the host's next OUT packet, which sets this
+                 * same bit again; clearing it after the DMA (as before) could
+                 * erase that new packet's bit — especially when isr_usbd runs
+                 * between ENDEPOUT and the clear — so the packet was ACKed to the
+                 * host but never DMA'd: a silently missing 64-byte chunk. Seen
+                 * 2026-10-22 as ~2% of 1342-byte CDC-ECM frames arriving
+                 * truncated (gnrc_ipv6 "invalid payload length" = every lost ping).
+                 */
+                usbdev->device->EPDATASTATUS = 1 << (ep->num + 16);
                 /* start dma to transfer payload to memory */
                 _ep_dma_out(ep);
 
-                usbdev->device->EPDATASTATUS = 1 << (ep->num + 16);
                 event = USBDEV_EVENT_TR_COMPLETE;
             }
         }

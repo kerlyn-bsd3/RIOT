@@ -12,6 +12,7 @@
  * @file
  */
 #include <assert.h>
+#include <stdio.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <kernel_defines.h>
@@ -994,6 +995,13 @@ static void _receive(gnrc_pktsnip_t *pkt)
     }
     else if (ipv6_len > (gnrc_pkt_len_upto(pkt, GNRC_NETTYPE_IPV6) - sizeof(ipv6_hdr_t))) {
         DROPCTR(5);
+#ifdef GNRC_IPV6_DROP_COUNTERS
+        printf("ipv6: bad payload length: hdr %u, actual %u (short by %d)\n",
+               (unsigned)byteorder_ntohs(hdr->len),
+               (unsigned)(gnrc_pkt_len_upto(pkt, GNRC_NETTYPE_IPV6) - sizeof(ipv6_hdr_t)),
+               (int)byteorder_ntohs(hdr->len) -
+               (int)(gnrc_pkt_len_upto(pkt, GNRC_NETTYPE_IPV6) - sizeof(ipv6_hdr_t)));
+#endif
         DEBUG("ipv6: invalid payload length: %d, actual: %d, dropping packet\n",
               (int) byteorder_ntohs(hdr->len),
               (int) (gnrc_pkt_len_upto(pkt, GNRC_NETTYPE_IPV6) - sizeof(ipv6_hdr_t)));
