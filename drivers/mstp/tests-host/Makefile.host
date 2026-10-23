@@ -11,7 +11,7 @@ COMMON   := ../mstp_mgr.c ../mstp_fsm.c ../mstp_link.c ../mstp_crc.c ../mstp_cob
             ../mstp_frame.c
 
 .PHONY: all check clean
-all: test_mstp_mgr test_mstp_link test_mstp_frame
+all: test_mstp_mgr test_mstp_link test_mstp_frame test_mstp_crc
 
 test_mstp_mgr: test_mstp_mgr.c $(COMMON)
 	$(CC) $(CFLAGS) $(INCLUDES) test_mstp_mgr.c $(COMMON) -o $@
@@ -22,8 +22,11 @@ test_mstp_link: test_mstp_link.c $(COMMON)
 test_mstp_frame: test_mstp_frame.c $(COMMON)
 	$(CC) $(CFLAGS) $(INCLUDES) test_mstp_frame.c $(COMMON) -o $@
 
+test_mstp_crc: test_mstp_crc.c $(COMMON)
+	$(CC) $(CFLAGS) $(INCLUDES) test_mstp_crc.c $(COMMON) -o $@
+
 check: all
-	./test_mstp_mgr && ./test_mstp_link && ./test_mstp_frame
+	./test_mstp_mgr && ./test_mstp_link && ./test_mstp_frame && ./test_mstp_crc
 
 clean:
-	$(RM) test_mstp_mgr test_mstp_link test_mstp_frame
+	$(RM) test_mstp_mgr test_mstp_link test_mstp_frame test_mstp_crc

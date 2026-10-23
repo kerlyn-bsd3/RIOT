@@ -13,6 +13,7 @@
 #ifndef MSTP_CRC_H
 #define MSTP_CRC_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -36,6 +37,15 @@ extern "C" {
  * field, octet by octet as transmitted/received.
  */
 uint32_t calc_crc32K(uint8_t data_value, uint32_t crc_value);
+
+/** @brief  Bit-at-a-time reference CRC-32K (the draft's code); test oracle. */
+uint32_t calc_crc32K_ref(uint8_t data_value, uint32_t crc_value);
+
+/**
+ * @brief   Accumulate @p len octets into @p crc (table-driven). No init, no
+ *          final complement: caller-managed, so it can run in pieces.
+ */
+uint32_t mstp_crc32k_update(uint32_t crc, const uint8_t *data, size_t len);
 
 /**
  * @brief   Convenience: CRC-32K over a buffer, returning the transmitted value.
