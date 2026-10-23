@@ -44,3 +44,24 @@ mirrored, `usb open|closed`, `drop` (USB buffer full — should stay 0), `offlin
 
 Build options: `-DMSTP_SRC_ADDR=n`, `-DMSTP_NMAX_MANAGER=n`, `-DMON_USB_BUF_SIZE=n`
 (power of two). USB VID/PID default to RIOT's pid.codes test IDs (1209:7D01).
+
+## Capturing into Wireshark: `mstp_capture.py`
+
+`mstp_capture.py` (this directory) replaces bacnet-stack's `mstpcap`. It frames the
+mirrored octets into MS/TP frames, checks the header CRC-8 and the data CRC (CRC-16, or
+CRC-32K for COBS Types 32..127), and writes pcap with LINKTYPE_BACNET_MS_TP (165) and
+snaplen 65535, so full 1500-octet IPv6 frames (Length up to 2043) are never truncated.
+Bad-header-CRC frames are dropped; bad-data-CRC frames are written and counted. No
+dependencies beyond Python 3.
+
+    ./mstp_capture.py | wireshark -k -i -                 # live
+    ./mstp_capture.py -w bus.pcap                         # to a file
+    ./mstp_capture.py -p raw-octets.bin -w bus.pcap       # replay a raw byte dump
+
+The port defaults to the only `/dev/serial/by-id/usb-RIOT-os.org_*-if00`; use `-p` if
+there is more than one. The tool reopens the port after a re-plug, prints stats to
+stderr every 10 s (`-q` to silence), and exits cleanly when Wireshark stops reading.
+
+As a Wireshark interface (extcap): symlink it into the folder Wireshark shows as
+"Personal Extcap path" (Help > About Wireshark > Folders), restart Wireshark, and pick
+"BACnet MS/TP (RIOT monitor)". The port is an interface option (default `auto`).
