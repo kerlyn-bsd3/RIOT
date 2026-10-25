@@ -51,8 +51,14 @@ Build options: `-DMSTP_SRC_ADDR=n`, `-DMSTP_NMAX_MANAGER=n`, `-DMON_USB_BUF_SIZE
 mirrored octets into MS/TP frames, checks the header CRC-8 and the data CRC (CRC-16, or
 CRC-32K for COBS Types 32..127), and writes pcap with LINKTYPE_BACNET_MS_TP (165) and
 snaplen 65535, so full 1500-octet IPv6 frames (Length up to 2043) are never truncated.
-Bad-header-CRC frames are dropped; bad-data-CRC frames are written and counted. No
-dependencies beyond Python 3.
+Bad-header-CRC frames are dropped; bad-data-CRC frames are written and counted. A
+COBS frame that is cut short is detected exactly (COBS data can never contain 0x55, so a
+0x55 before the frame's end means octets were lost): it is counted as `truncated` with the
+number of missing octets, and the tool resyncs there instead of misframing the frames
+that follow. Every bad frame gets one stderr line (time, kind, details); the exit summary
+adds a histogram of missing-octet counts (64 = one lost full-speed USB packet). 0xFF
+octets between frames are counted as `pad_octets` (each transmitter's trailing pad),
+anything else as `noise_octets`. No dependencies beyond Python 3.
 
     ./mstp_capture.py | wireshark -k -i -                 # live
     ./mstp_capture.py -w bus.pcap                         # to a file

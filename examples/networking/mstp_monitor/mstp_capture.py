@@ -13,6 +13,11 @@ LINKTYPE_BACNET_MS_TP (165), snaplen 65535, so 1500-octet IPv6 frames
 
 Frames with a bad header CRC are not written (they are line noise or a lost
 sync); frames with a bad data CRC ARE written (Wireshark flags them) and counted.
+A COBS frame cut short (an X'55' — impossible inside COBS data — appears before
+its end) is counted as truncated with the exact number of missing octets, not
+written, and the framer resyncs there. Every bad frame gets one stderr line
+(time, kind, details), even with -q; 0xFF octets between frames are counted
+as pad (the transmitters' trailing pad), anything else as noise.
 Timestamps are host receive times of the frame's first USB read — fine for
 ordering and coarse timing; use the Saleae for sub-ms timing.
 
@@ -130,13 +135,31 @@ def data_ok(ftype, data):
 
 class Framer:
     """Byte-stream -> MS/TP frames. Hunts 55 FF, takes the 6-octet header
-    (type, dst, src, len_hi, len_lo, hcrc), then Length + 2 data octets."""
+    (type, dst, src, len_hi, len_lo, hcrc), then Length + 2 data octets.
 
-    def __init__(self):
+    COBS-encoded frames (Types 32..127) never contain X'55' after the preamble
+    (COBS removes zeros; the X'55' mask then removes X'55'), so an X'55' inside
+    a COBS frame's data/CRC region means the frame was cut short: octets were
+    lost between the bus and here. The framer then reports exactly how many
+    octets are missing and resyncs at that X'55' instead of swallowing the
+    following frames (which would otherwise show up as header-CRC errors).
+
+    @p report(kind, ts, detail) is called for every bad frame (diagnostics)."""
+
+    def __init__(self, report=None):
         self.buf = bytearray()
         self.t_first = None
+        self.report = report or (lambda *a: None)
+        self.missing_sizes = {}
         self.stats = dict(frames=0, data34=0, max_len=0, hdr_bad=0, data_bad=0,
-                          skipped=0)
+                          truncated=0, pad=0, noise=0)
+
+    def _skip(self, n):
+        """Discard n octets at the front: 0xFF counts as pad, anything else as noise."""
+        pad = self.buf.count(0xFF, 0, n)
+        self.stats["pad"] += pad
+        self.stats["noise"] += n - pad
+        del self.buf[:n]
 
     def feed(self, chunk, now):
         if not self.buf:
@@ -149,21 +172,40 @@ class Framer:
             i = b.find(b"\x55\xff")
             if i < 0:
                 keep = 1 if b[-1:] == b"\x55" else 0
-                self.stats["skipped"] += len(b) - keep
-                del b[:len(b) - keep]
+                self._skip(len(b) - keep)
                 break
             if i:
-                self.stats["skipped"] += i
-                del b[:i]
+                self._skip(i)
             if len(b) < 8:
                 break
             hdr = bytes(b[2:8])
             length = (hdr[3] << 8) | hdr[4]
             if not header_ok(hdr) or length > NMAX_LENGTH:
                 self.stats["hdr_bad"] += 1
+                self.report("HDR_CRC", self.t_first, "header %s" % hdr.hex(" "))
                 del b[:1]                       # resync just past this 0x55
+                self.stats["noise"] += 1
                 continue
             total = 8 + (length + 2 if length else 0)
+            if length and hdr[0] in COBS_TYPES:
+                j = b.find(0x55, 8, min(len(b), total))
+                if j >= 0:                      # cut short: next frame began early
+                    end = j
+                    if b[j - 1] == 0xFF and j - 1 >= 8:
+                        end = j - 1             # the transmitter's trailing pad, not data
+                    got = end - 8
+                    missing = (length + 2) - got
+                    self.stats["truncated"] += 1
+                    self.missing_sizes[missing] = self.missing_sizes.get(missing, 0) + 1
+                    self.report("TRUNCATED", self.t_first,
+                                "type %d %d->%d Length %d: got %d of %d data octets, "
+                                "MISSING %d; last octets %s"
+                                % (hdr[0], hdr[2], hdr[1], length, got, length + 2,
+                                   missing, bytes(b[max(8, end - 8):end]).hex(" ")))
+                    if end < j:
+                        self.stats["pad"] += 1
+                    del b[:j]                   # resync at the X'55' (partial frame dropped)
+                    continue
             if len(b) < total:
                 break
             frame = bytes(b[:total])
@@ -173,6 +215,11 @@ class Framer:
                 ok = data_ok(hdr[0], frame[8:])
                 if not ok:
                     self.stats["data_bad"] += 1
+                    self.report("DATA_CRC", self.t_first,
+                                "type %d %d->%d Length %d (all octets present, value(s) "
+                                "corrupted); first %s ... last %s"
+                                % (hdr[0], hdr[2], hdr[1], length,
+                                   frame[8:24].hex(" "), frame[-16:].hex(" ")))
             self.stats["frames"] += 1
             if hdr[0] == 34:
                 self.stats["data34"] += 1
@@ -237,13 +284,19 @@ def log(msg):
 def fmt_stats(s):
     return ("frames=%(frames)d type34=%(data34)d max_len=%(max_len)d "
             "hdr_crc_bad=%(hdr_bad)d data_crc_bad=%(data_bad)d "
-            "skipped_octets=%(skipped)d" % s)
+            "truncated=%(truncated)d pad_octets=%(pad)d noise_octets=%(noise)d" % s)
+
+
+def report_bad(kind, ts, detail):
+    """One stderr line per bad frame: local time (ms), kind, details."""
+    t = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) + ".%03d" % (int(ts * 1000) % 1000)
+    log("%s %-9s %s" % (t, kind, detail))
 
 
 def capture(port_arg, out, quiet):
     out.write(pcap_global_header())
     out.flush()
-    framer = Framer()
+    framer = Framer(report_bad)
     fd = None
     port = None
     last_stats = time.time()
@@ -290,6 +343,9 @@ def capture(port_arg, out, quiet):
         pass
     finally:
         log("done: " + fmt_stats(framer.stats))
+        if framer.missing_sizes:
+            log("truncations by octets missing: " + ", ".join(
+                "%d:%d" % kv for kv in sorted(framer.missing_sizes.items())))
         if fd is not None:
             os.close(fd)
 
