@@ -14,8 +14,9 @@ LINKTYPE_BACNET_MS_TP (165), snaplen 65535, so 1500-octet IPv6 frames
 Frames with a bad header CRC are not written (they are line noise or a lost
 sync); frames with a bad data CRC ARE written (Wireshark flags them) and counted.
 A COBS frame cut short (an X'55' — impossible inside COBS data — appears before
-its end) is counted as truncated with the exact number of missing octets, not
-written, and the framer resyncs there. Every bad frame gets one stderr line
+its end) is counted as truncated with the exact number of missing octets,
+written as received (shorter than its Length field; Wireshark flags it and
+decodes what is there), and the framer resyncs there. Every bad frame gets one stderr line
 (time, kind, details), even with -q; 0xFF octets between frames are counted
 as pad (the transmitters' trailing pad), anything else as noise.
 Timestamps are host receive times of the frame's first USB read — fine for
@@ -141,8 +142,10 @@ class Framer:
     (COBS removes zeros; the X'55' mask then removes X'55'), so an X'55' inside
     a COBS frame's data/CRC region means the frame was cut short: octets were
     lost between the bus and here. The framer then reports exactly how many
-    octets are missing and resyncs at that X'55' instead of swallowing the
-    following frames (which would otherwise show up as header-CRC errors).
+    octets are missing, passes on the octets it did receive (without the
+    trailing 0xFF pad) as a short frame, and resyncs at that X'55' instead of
+    swallowing the following frames (which would otherwise show up as
+    header-CRC errors).
 
     @p report(kind, ts, detail) is called for every bad frame (diagnostics)."""
 
@@ -189,6 +192,9 @@ class Framer:
             total = 8 + (length + 2 if length else 0)
             if length and hdr[0] in COBS_TYPES:
                 j = b.find(0x55, 8, min(len(b), total))
+                if (j < 0 and len(b) > total and b[total] == 0x55 and b[total - 1] == 0xFF
+                        and not data_ok(hdr[0], bytes(b[8:total]))):
+                    j = total                   # 1 octet lost: the frame swallowed its 0xFF pad
                 if j >= 0:                      # cut short: next frame began early
                     end = j
                     if b[j - 1] == 0xFF and j - 1 >= 8:
@@ -204,7 +210,12 @@ class Framer:
                                    missing, bytes(b[max(8, end - 8):end]).hex(" ")))
                     if end < j:
                         self.stats["pad"] += 1
-                    del b[:j]                   # resync at the X'55' (partial frame dropped)
+                    self.stats["frames"] += 1
+                    if hdr[0] == 34:
+                        self.stats["data34"] += 1
+                    out.append((self.t_first, bytes(b[:end]), False))
+                    self.t_first = now
+                    del b[:j]                   # resync at the X'55'
                     continue
             if len(b) < total:
                 break
