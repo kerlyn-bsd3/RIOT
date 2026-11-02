@@ -85,6 +85,9 @@ USEMODULE += ztimer_usec
 # mstp netif MTU becomes 1500 (largest unfragmented echo: ping -s 1452).
 CFLAGS += -DCONFIG_GNRC_NETIF_NONSTANDARD_6LO_MTU=1
 
+# gnrc_ipv6 drop counters, printed by the `ipv6drops` shell command.
+CFLAGS += -DGNRC_IPV6_DROP_COUNTERS
+
 # MS/TP This Station address: `make MSTP_ADDR=<n> ...` (default 2). Must be unique
 # on the bus and <= Nmax_manager (8 on this bed). Changing it rebuilds (CFLAGS change).
 MSTP_ADDR ?= 2

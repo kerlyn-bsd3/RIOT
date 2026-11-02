@@ -4,6 +4,11 @@ A RIOT 6LoWPAN border router (6LBR) that bridges an **MS/TP** link (downstream,
 RFC 8163) to an IPv6 uplink over **SLIP** to a Linux host running tunslip6.
 Sibling of `mstp_6lo`; same board-agnostic `mstp` driver, in the 6LBR role.
 
+The test bed (monitor, 6LBR and 6LN), the soak test and the
+draft-ietf-6lo-rfc8163-bis Appendix D example are described in
+[TESTBED.md](TESTBED.md). The bed uses the CDC-ECM uplink (`UPLINK=cdc-ecm`,
+last section below); SLIP is the alternative.
+
 ## Roles & addressing (hardcoded for the test bed)
 
 | | interface | peripheral | rate | address |
@@ -14,7 +19,7 @@ Sibling of `mstp_6lo`; same board-agnostic `mstp` driver, in the 6LBR role.
 
 The 6LBR does the 6LoWPAN-ND the old Contiki BDK lacked: it answers NS(ARO) with
 NA(ARO) and advertises the prefix + 6CO + ABRO, so a 6LN registers natively.
-Peer for first bring-up: a **BDK at MS/TP station 1 acting as the 6LN**.
+Its peer is the RIOT 6LN (`mstp_6lo`) at MS/TP station 3.
 
 ## Build & flash (on the VM)
 
@@ -86,11 +91,10 @@ Contiki BDK's 576000 — any rate both ends agree on works.
    `aaaa::ff:fe00:2` and the slip iface with `fe80::2`; `nib prefix` lists
    `aaaa::/64`; `nib route` shows the default route via `fe80::1`.
 3. **MS/TP ring:** `status` (toggle) shows the token circulating with the 6LN
-   (TS 1) and clean RX counters.
-4. **6LN registration:** the BDK-6LN (TS 1) forms `aaaa::ff:fe00:1` from our RA.
-   (If the BDK doesn't send NS(ARO), it won't appear in the BR's neighbor cache —
-   that part needs a RIOT 6LN; see the session log.)
-5. **End to end:** from the host, `ping6 -c3 aaaa::ff:fe00:1` (the 6LN). Replies
+   (TS 3) and clean RX counters.
+4. **6LN registration:** the 6LN (TS 3) forms `aaaa::ff:fe00:3` from our RA and
+   registers it (NS/NA with ARO).
+5. **End to end:** from the host, `ping6 -c3 aaaa::ff:fe00:3` (the 6LN). Replies
    return via the BR's default route to `fe80::1`.
 
 ## Notes

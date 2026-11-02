@@ -6,6 +6,9 @@ octet on the bus** — other stations' frames and its own — out the nRF52840's
 **native USB** as a CDC-ACM byte stream. Karg's capture tool works unchanged: point
 it at the new `/dev/ttyACM*` instead of the BDK's `/dev/ttyUSB0`.
 
+For the whole test bed and the soak test, see
+[../mstp_6lbr/TESTBED.md](../mstp_6lbr/TESTBED.md).
+
 | | peripheral | notes |
 |---|---|---|
 | MS/TP | UARTE1 = Arduino D0/D1, DE = D2 (P1.03) | 115200, TS 0, 1 pad octet |
