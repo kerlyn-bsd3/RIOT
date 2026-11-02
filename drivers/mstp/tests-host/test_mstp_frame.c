@@ -11,6 +11,7 @@
  * Build (from drivers/mstp/tests-host/):  make -f Makefile.host check
  */
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -232,10 +233,71 @@ static void t_ipv6_tx_path(void)
     printf("t_ipv6_tx_path\n");
 }
 
+/* Largest 6LoBAC MSDU (MSTP_MAX_MSDU = 1501: a 1500-octet IPv6 packet plus one
+ * octet of 6LoWPAN expansion). No zero octets, so COBS adds the most overhead:
+ * Encoded Data 1507, Length 1510 (draft-ietf-6lo-rfc8163-bis). */
+static void t_ipv6_roundtrip_max(void)
+{
+    static uint8_t msdu[MSTP_MAX_MSDU];
+    for (size_t i = 0; i < sizeof(msdu); i++) {
+        msdu[i] = (uint8_t)((i % 255U) + 1U);   /* never 0x00 */
+    }
+    static uint8_t frame[MSTP_IPV6_FRAME_MAX(MSTP_MAX_MSDU)];
+
+    CHECK(sizeof(msdu) == 1501U, "MSTP_MAX_MSDU %zu != 1501", sizeof(msdu));
+    size_t n = mstp_build_ipv6_frame(1, 2, msdu, sizeof(msdu), frame, sizeof(frame));
+    CHECK(n > 0, "build failed");
+    unsigned length = ((unsigned)frame[5] << 8) | frame[6];
+    CHECK(length == 1510U, "Length %u != 1510", length);
+    CHECK(n == 8U + length + 2U, "frame size %zu != %u", n, 8U + length + 2U);
+
+    static mstp_rx_fsm_t rx;
+    mstp_rx_fsm_init(&rx, 2);
+    mstp_rx_result_t r = feed(&rx, frame, n);
+    CHECK(r == MSTP_RX_FRAME, "max MSDU not delivered (r=%d)", (int)r);
+    CHECK(rx.stats.frame_too_long == 0, "frame_too_long %u",
+          (unsigned)rx.stats.frame_too_long);
+    CHECK(rx.frame.length == sizeof(msdu), "rx len %u", rx.frame.length);
+    CHECK(memcmp(rx.frame.data, msdu, sizeof(msdu)) == 0, "max MSDU mismatch");
+    printf("t_ipv6_roundtrip_max\n");
+}
+
+/* One octet more than MSTP_MAX_MSDU: Length 1511 does not fit the InputBuffer,
+ * which holds DataLength + 2 octets, so the frame is skipped as FrameTooLong
+ * (the old check, DataLength > InputBufferSize, let it write past the end). */
+static void t_ipv6_too_long(void)
+{
+    static uint8_t msdu[MSTP_MAX_MSDU + 1U];
+    for (size_t i = 0; i < sizeof(msdu); i++) {
+        msdu[i] = (uint8_t)((i % 255U) + 1U);
+    }
+    static uint8_t frame[MSTP_IPV6_FRAME_MAX(MSTP_MAX_MSDU + 1U)];
+
+    size_t n = mstp_build_ipv6_frame(1, 2, msdu, sizeof(msdu), frame, sizeof(frame));
+    CHECK(n > 0, "build failed");
+    unsigned length = ((unsigned)frame[5] << 8) | frame[6];
+    CHECK(length == 1511U, "Length %u != 1511", length);
+
+    static mstp_rx_fsm_t rx;
+    mstp_rx_fsm_init(&rx, 2);
+    mstp_rx_result_t r = MSTP_RX_NONE;
+    bool delivered = false;
+    for (size_t i = 0; i < n; i++) {
+        r = mstp_rx_fsm_octet(&rx, frame[i]);
+        delivered |= (r == MSTP_RX_FRAME);
+    }
+    CHECK(!delivered, "over-long frame delivered");
+    CHECK(rx.stats.frame_too_long == 1, "frame_too_long %u",
+          (unsigned)rx.stats.frame_too_long);
+    printf("t_ipv6_too_long\n");
+}
+
 int main(void)
 {
     t_ipv6_roundtrip_unicast();
     t_ipv6_roundtrip_large();
+    t_ipv6_roundtrip_max();
+    t_ipv6_too_long();
     t_ipv6_broadcast();
     t_ipv6_not_for_us();
     t_ipv6_corrupt_detected();

@@ -47,19 +47,38 @@ extern "C" {
 #endif
 
 /**
- * @brief   InputBuffer size (135-2024 9.5.2).
+ * @brief   IPv6 MTU of the MS/TP link (RFC 8163 section 4): 1500 octets.
  *
- * max NPDU / 254 (rounded up) + 5 for the Encoded CRC-32K. For the maximum
- * BACnet NPDU: 1497 + 6 + 5 = 1508. 6LoBAC needs to accept a 1500-octet IPv6
- * datagram (RFC 8163), so the default is sized for that.
+ * Reported as NETOPT_MAX_PDU_SIZE, from which gnrc derives the interface's
+ * IPv6 MTU (with CONFIG_GNRC_NETIF_NONSTANDARD_6LO_MTU). Because it is not
+ * smaller than that MTU, gnrc also disables 6LoWPAN fragmentation.
  */
-#ifndef MSTP_INPUT_BUFFER_SIZE
-#define MSTP_INPUT_BUFFER_SIZE  (1508U)
+#ifndef MSTP_IPV6_MTU
+#define MSTP_IPV6_MTU           (1500U)
 #endif
 
-/** Maximum decoded MSDU handed up. */
+/**
+ * @brief   Maximum MSDU (decoded Data field) of a Frame Type 34 frame: 1501.
+ *
+ * A 1500-octet IPv6 packet can grow by one octet in LOWPAN_IPHC encoding (the
+ * only dispatch 6LoBAC allows, RFC 8163 section 5): with a CID octet and
+ * nothing elided, the IPHC header is 41 octets for the 40-octet IPv6 header.
+ * That gives Encoded Data of at most 1507 octets and a Length of at most 1510
+ * (draft-ietf-6lo-rfc8163-bis; RFC 8163 said 1509).
+ */
 #ifndef MSTP_MAX_MSDU
-#define MSTP_MAX_MSDU           (1500U)
+#define MSTP_MAX_MSDU           (MSTP_IPV6_MTU + 1U)
+#endif
+
+/**
+ * @brief   InputBuffer size (135-2024 9.5.2): Encoded Data + Encoded CRC-32K.
+ *
+ * COBS adds one octet per 254 data octets (rounded up), and the Encoded
+ * CRC-32K is 5 octets. For the maximum BACnet NPDU: 1497 + 6 + 5 = 1508. For
+ * the maximum 6LoBAC MSDU: 1501 + 6 + 5 = 1512, which is the default.
+ */
+#ifndef MSTP_INPUT_BUFFER_SIZE
+#define MSTP_INPUT_BUFFER_SIZE  (1512U)
 #endif
 
 /** MS/TP Frame Type for IPv6-over-MS/TP (6LoBAC), allocated to IETF: 34. */
@@ -129,7 +148,7 @@ typedef struct {
     uint32_t header_crc_err;  /**< BadHeader: HeaderCRC residue mismatch       */
     uint32_t src_invalid;     /**< BadHeader: Source Address == 255 (illegal)  */
     uint32_t bad_length;      /**< BadHeader: DataLength illegal for frame type */
-    uint32_t frame_too_long;  /**< FrameTooLong: len > InputBuffer (SKIP_DATA) */
+    uint32_t frame_too_long;  /**< FrameTooLong: len + 2 > InputBuffer (SKIP_DATA) */
     uint32_t data_crc_err;    /**< BadCRC (DATA_CRC / VALIDATE_ENCODED_FIELDS) */
     uint32_t cobs_err;        /**< COBS decode errors                          */
     uint32_t frame_abort;     /**< Tframe_abort silence timeouts               */

@@ -99,7 +99,7 @@ static int _get(netdev_t *netdev, netopt_t opt, void *val, size_t max_len)
             return 1;
         case NETOPT_MAX_PDU_SIZE:
             if (max_len < sizeof(uint16_t)) { return -EOVERFLOW; }
-            *((uint16_t *)val) = MSTP_MAX_MSDU;
+            *((uint16_t *)val) = MSTP_IPV6_MTU;
             return sizeof(uint16_t);
 #ifdef MODULE_GNRC_NETIF
         case NETOPT_PROTO:

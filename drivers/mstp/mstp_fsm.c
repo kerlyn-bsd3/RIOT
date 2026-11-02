@@ -137,7 +137,9 @@ static mstp_rx_result_t enter_header_crc(mstp_rx_fsm_t *fsm)
         fsm->state = MSTP_RX_SKIP_DATA;
         return MSTP_RX_NONE;
     }
-    if (len > MSTP_INPUT_BUFFER_SIZE) {                      /* FrameTooLong */
+    /* The encoded fields are DataLength + 2 octets (Index runs to
+     * DataLength + 1, 9.5.2), all stored in input_buffer. */
+    if ((uint32_t)len + 2U > MSTP_INPUT_BUFFER_SIZE) {       /* FrameTooLong */
         fsm->stats.frame_too_long++;
         fsm->index = 0;
         fsm->state = MSTP_RX_SKIP_DATA;
