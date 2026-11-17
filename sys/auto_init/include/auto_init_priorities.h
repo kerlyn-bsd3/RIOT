@@ -187,6 +187,12 @@ extern "C" {
  */
 #define AUTO_INIT_PRIO_MOD_GCOAP                        1240
 #endif
+#ifndef AUTO_INIT_PRIO_MOD_UNICOAP
+/**
+ * @brief   `unicoap` priority
+ */
+#define AUTO_INIT_PRIO_MOD_UNICOAP                      1245
+#endif
 #ifndef AUTO_INIT_PRIO_MOD_DEVFS
 /**
  * @brief   DEVFS priority
@@ -246,6 +252,12 @@ extern "C" {
  * @brief   LoRaMAC priority
  */
 #define AUTO_INIT_PRIO_MOD_LORAMAC                      1330
+#endif
+#ifndef AUTO_INIT_PRIO_MOD_RADIOLIB
+/**
+ * @brief   RadioLib priority
+ */
+#define AUTO_INIT_PRIO_MOD_RADIOLIB                     1335
 #endif
 #ifndef AUTO_INIT_PRIO_MOD_DSM
 /**

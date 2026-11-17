@@ -1,9 +1,6 @@
 /*
- * Copyright (C) 2015 Martine Lenders <mlenders@inf.fu-berlin.de>
- *
- * This file is subject to the terms and conditions of the GNU Lesser
- * General Public License v2.1. See the file LICENSE in the top level
- * directory for more details.
+ * SPDX-FileCopyrightText: 2015 Martine Lenders <mlenders@inf.fu-berlin.de>
+ * SPDX-License-Identifier: LGPL-2.1-only
  */
 
 /**
@@ -524,6 +521,13 @@ static int _fill_ipv6_hdr(gnrc_netif_t *netif, gnrc_pktsnip_t *ipv6)
             }
             /* Otherwise leave unspecified */
         }
+    }
+    /* TODO: This can be removed when `memcmp()` on `native` has become thread-safe.
+     * This is the only way `netif` can become `NULL` here while `hdr->dst` is
+     * not loopback. */
+    else if ((netif == NULL) && !ipv6_addr_is_loopback(&hdr->dst)) {
+        DEBUG("ipv6: no interface provided for non-loopback destination\n");
+        return -EADDRNOTAVAIL;
     }
     else {
         bool invalid_src;

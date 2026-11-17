@@ -1,10 +1,6 @@
 /*
- * Copyright (C) 2019 Freie Universität Berlin
- *
- * This file is subject to the terms and conditions of the GNU Lesser
- * General Public License v2.1. See the file LICENSE in the top level
- * directory for more details.
- *
+ * SPDX-FileCopyrightText: 2019 Freie Universität Berlin
+ * SPDX-License-Identifier: LGPL-2.1-only
  */
 
 /**
@@ -25,7 +21,8 @@
 #include "net/netdev/ieee802154_submac.h"
 
 #if IS_USED(MODULE_OPENDSME)
-#include "opendsme/opendsme.h"
+#  include "opendsme/opendsme.h"
+#  include "nrf_clock.h"
 #endif
 
 /**
@@ -62,6 +59,8 @@ void auto_init_nrf802154(void)
                                  NRF802154_MAC_STACKSIZE,
                                  NRF802154_MAC_PRIO, "nrf802154",
                                  (netdev_t*) &nrf802154_netdev.submac.dev);
+
+        clock_hfxo_request();
 #else
         netdev_ieee802154_submac_init(&nrf802154_netdev);
         nrf802154_hal_setup(&nrf802154_netdev.submac.dev);

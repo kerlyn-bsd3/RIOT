@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
-#
-# Copyright (C) 2020 Freie Universität Berlin
-#
-# This file is subject to the terms and conditions of the GNU Lesser
-# General Public License v2.1. See the file LICENSE in the top level
-# directory for more details.
+
+# SPDX-FileCopyrightText: 2020 Freie Universität Berlin
+# SPDX-License-Identifier: LGPL-2.1-only
 
 import abc
 import sys
@@ -25,15 +22,14 @@ class Installer(abc.ABC):
 
     @abc.abstractmethod
     def _install(self, package):
-        """
-        Executes the install command
-        """
+        """Execute the install command."""
         pass
 
     def install(self, package):
         """
-        Executes the install command, but asks the user before-hand if it is
-        okay to do so.
+        Execute the install command after asking the user.
+
+        The user is asked before-hand if it is okay to do so.
         """
         if self._ask(package):
             self._install(package)

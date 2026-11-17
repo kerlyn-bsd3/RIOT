@@ -1,8 +1,5 @@
-# Copyright (C) 2020 Freie Universität Berlin
-#
-# This file is subject to the terms and conditions of the GNU Lesser
-# General Public License v2.1. See the file LICENSE in the top level
-# directory for more details.
+# SPDX-FileCopyrightText: 2020 Freie Universität Berlin
+# SPDX-License-Identifier: LGPL-2.1-only
 
 import pytest
 import riotctrl_shell.netif
@@ -135,7 +132,7 @@ def test_ifconfig_down_error():
      ({"netif": "foobar", "addr": "dead:coff:ee::/64", "anycast": False},
       "ifconfig foobar add dead:coff:ee::/64"),
      ({"netif": "foobar", "addr": "dead:coff:ee::/64", "anycast": True},
-      "ifconfig foobar add dead:coff:ee::/64 anycast")]
+      "ifconfig foobar add anycast dead:coff:ee::/64")]
 )
 def test_ifconfig_add(kwargs, expected):
     rc = init_ctrl(output="success: added address to interface")
@@ -152,7 +149,7 @@ def test_ifconfig_add(kwargs, expected):
      ({"netif": "foobar", "addr": "dead:coff:ee::/64", "anycast": False},
       "ifconfig foobar add dead:coff:ee::/64"),
      ({"netif": "foobar", "addr": "dead:coff:ee::/64", "anycast": True},
-      "ifconfig foobar add dead:coff:ee::/64 anycast")]
+      "ifconfig foobar add anycast dead:coff:ee::/64")]
 )
 def test_ifconfig_add_error(kwargs, expected):
     rc = init_ctrl()

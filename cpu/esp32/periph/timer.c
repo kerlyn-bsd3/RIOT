@@ -27,6 +27,7 @@
 #include "esp_cpu.h"
 #include "esp_private/periph_ctrl.h"
 #include "esp_rom_sys.h"
+#include "hal/clk_tree_ll.h"
 #include "hal/timer_hal.h"
 #include "hal/timer_ll.h"
 #include "rom/ets_sys.h"
@@ -60,6 +61,19 @@
 
 /* hardware timer modules used */
 
+#if CPU_FAM_ESP32 || CPU_FAM_ESP32S2 || CPU_FAM_ESP32S3 || CPU_FAM_ESP32C3
+/* For ESP32, ESP32-S2, ESP32-S3, ESP32-C2 and ESP32-C3, the TIMER_CLOCK_FREQ
+ * is based on APB_CLK_FREQ. This is fixed at 80MHz for CPU clock frequencies
+ * >=80MHz and equal to the CPU clock frequency for CPU clock frequencies <80Mhz. */
+#  define TIMER_CLOCK_FREQ rtc_clk_apb_freq_get() /* APB_CLK is used */
+#elif CPU_FAM_ESP32C6
+#  define TIMER_CLOCK_FREQ ((uint32_t)CLK_LL_PLL_80M_FREQ_MHZ * MHZ)  /* PLL_F80M_CLK is used */
+#elif CPU_FAM_ESP32H2
+#  define TIMER_CLOCK_FREQ ((uint32_t)CLK_LL_PLL_48M_FREQ_MHZ * MHZ)  /* PLL_F48M_CLK is used */
+#else
+#  error "Platform implementation is missing"
+#endif
+
 /**
  * ESP32 and ESP32-S2 have four 64 bit hardware timers while ESP32-S3 has four
  * 54 bit hardware timers: two timer groups TMG0 and TMG1 with 2 timers each
@@ -92,6 +106,9 @@
 
 #define HW_TIMER_NUMOF      ARRAY_SIZE(_timers_desc)
 #define HW_TIMER_CHANNELS   1
+
+#define HW_TIMER_CLK_DIV_MIN    2       /* minimum clock divider */
+#define HW_TIMER_CLK_DIV_MAX    65536   /* maximum clock divider */
 
 struct _hw_timer_t {
     bool initialized;           /* indicates whether timer is already initialized */
@@ -179,8 +196,10 @@ void IRAM_ATTR _timer_int_handler(void* arg)
             timer_ll_enable_intr(_timers[dev].group, _timers[dev].int_mask, false);
             timer_ll_clear_intr_status(_timers[dev].group, _timers[dev].int_mask);
 
-            /* execute the callback function */
-            _timers[dev].isr_ctx.cb(_timers[dev].isr_ctx.arg, 0);
+            /* execute the callback function if defined */
+            if (_timers[dev].isr_ctx.cb) {
+                _timers[dev].isr_ctx.cb(_timers[dev].isr_ctx.arg, 0);
+            }
         }
     }
 
@@ -196,11 +215,10 @@ int timer_init(tim_t dev, uint32_t freq, timer_cb_t cb, void *arg)
     DEBUG("%s dev=%u freq=%" PRIu32 " cb=%p arg=%p\n",
           __func__, dev, freq, cb, arg);
 
-    uint32_t clk_div = rtc_clk_apb_freq_get() / freq;
+    uint32_t clk_div = TIMER_CLOCK_FREQ / freq;
 
     assert(dev <  HW_TIMER_NUMOF);
-    assert(clk_div >= 2 && clk_div <= 65536);
-    assert(cb != NULL);
+    assert(clk_div >= HW_TIMER_CLK_DIV_MIN && clk_div <= HW_TIMER_CLK_DIV_MAX);
 
     /* initialize timer data structure */
     _timers[dev].isr_ctx.cb  = cb;
@@ -276,9 +294,6 @@ int IRAM_ATTR timer_set(tim_t dev, int chn, unsigned int delta)
     timer_ll_clear_intr_status(_timers[dev].group, _timers[dev].int_mask);
     timer_ll_enable_intr(_timers[dev].group, _timers[dev].int_mask, true);
 
-    /* enable the counter */
-    timer_ll_enable_counter(_timers[dev].group, _timers[dev].index, true);
-
     /* restore interrupts enabled state */
     irq_restore (state);
 
@@ -338,6 +353,24 @@ void IRAM_ATTR timer_stop(tim_t dev)
     DEBUG("%s dev=%u @%" PRIu32 "\n", __func__, dev, system_get_time());
     assert(dev < HW_TIMER_NUMOF);
     timer_ll_enable_counter(_timers[dev].group, _timers[dev].index, false);
+}
+
+uword_t timer_query_freqs_numof(tim_t dev)
+{
+    (void)dev;
+    /* clock divider values from HW_TIMER_CLK_DIV_MIN to HW_TIMER_CLK_DIV_MAX */
+    return HW_TIMER_CLK_DIV_MAX - HW_TIMER_CLK_DIV_MIN + 1;
+}
+
+uint32_t timer_query_freqs(tim_t dev, uword_t index)
+{
+    (void)dev;
+
+    if (index > (HW_TIMER_CLK_DIV_MAX - HW_TIMER_CLK_DIV_MIN)) {
+        return 0;
+    }
+
+    return TIMER_CLOCK_FREQ / (index + HW_TIMER_CLK_DIV_MIN);
 }
 
 #else /* MODULE_ESP_HW_COUNTER */
@@ -449,7 +482,9 @@ void IRAM hw_timer_handler(void* arg)
         channel->used = false;
         xt_ints_off(BIT(timers_int[dev]));
         xthal_set_ccompare (dev, 0);
-        timer->isr_ctx.cb(timer->isr_ctx.arg, chn);
+        if (timer->isr_ctx.cb) {
+            timer->isr_ctx.cb(timer->isr_ctx.arg, chn);
+        }
     }
 
     irq_isr_exit();
@@ -461,7 +496,6 @@ int timer_init (tim_t dev, uint32_t freq, timer_cb_t cb, void *arg)
 
     assert(dev  <  HW_TIMER_NUMOF);
     assert(freq == HW_TIMER_FREQUENCY);
-    assert(cb   != NULL);
 
     if (_timers[dev].initialized) {
         DEBUG("%s timer dev=%u is already initialized (used)\n", __func__, dev);
@@ -633,5 +667,18 @@ static void IRAM __timer_channel_stop (struct _hw_timer_t* timer, struct hw_chan
         /* otherwise deactivate the channel */
         channel->used = false;
     }
+}
+
+uword_t timer_query_freqs_numof(tim_t dev)
+{
+    (void)dev;
+    /* only HW_TIMER_FREQUENCY is supported */
+    return 1;
+}
+
+uint32_t timer_query_freqs(tim_t dev, uword_t index)
+{
+    (void)dev;
+    return (index == 0) ? HW_TIMER_FREQUENCY : 0;
 }
 #endif /* MODULE_ESP_HW_COUNTER */

@@ -1,8 +1,5 @@
-# Copyright (C) 2019-20 Freie Universität Berlin
-#
-# This file is subject to the terms and conditions of the GNU Lesser
-# General Public License v2.1. See the file LICENSE in the top level
-# directory for more details.
+# SPDX-FileCopyrightText: 2019-2020 Freie Universität Berlin
+# SPDX-License-Identifier: LGPL-2.1-only
 
 """
 GNRC-related shell interactions
@@ -13,7 +10,6 @@ Defines GNRC-related shell command interactions
 import re
 
 from riotctrl.shell import ShellInteraction, ShellInteractionParser
-
 
 # ==== Parsers ====
 

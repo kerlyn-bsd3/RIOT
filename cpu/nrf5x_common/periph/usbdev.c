@@ -20,19 +20,19 @@
 #define USB_H_USER_IS_RIOT_INTERNAL
 
 #include <assert.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <errno.h>
 
 #include "architecture.h"
+#include "bitarithm.h"
 #include "cpu.h"
+#include "irq.h"
 #include "nrfusb.h"
 #include "periph/usbdev.h"
 #include "usb.h"
 #include "usb/descriptor.h"
-#include "bitarithm.h"
-#include "irq.h"
 
 #define ENABLE_DEBUG 0
 #include "debug.h"
@@ -44,27 +44,9 @@
 
 static nrfusb_t _usbdevs[NRF_USB_NUM_PERIPH];
 
-/*
- * Bulk/interrupt OUT flow control (2026-10-22, 6LoBAC). The USBD ACKs the next
- * OUT packet as soon as the previous EasyDMA transfer ends (ENDEPOUT) — software
- * cannot make it NAK after a DMA — and NAKs only while a received packet still
- * sits un-DMA'd in its internal buffer. Writing SIZE.EPOUT[n] "clears the
- * endpoint". The original driver wrote SIZE.EPOUT on every re-arm, sometimes
- * while the next packet was already in flight, so a following packet overwrote
- * an ACKed-but-not-yet-DMA'd one (CDC-ECM: last full 64-B packet lost, short tail
- * DMA'd into its slot, ~2% of frames). New scheme:
- *  - SIZE.EPOUT is written only once after the endpoint is (re)initialised
- *    (_out_primed), never on re-arm;
- *  - a packet is DMA'd only when software has armed a buffer (_out_armed); a
- *    packet arriving between URBs simply waits in the USBD buffer (host NAKed)
- *    until _ep_xmit arms one, which then posts the ESR itself;
- *  - the packet length is latched from SIZE.EPOUT BEFORE the DMA (after ENDEPOUT
- *    SIZE.EPOUT may already describe the next packet) and returned by
- *    USBOPT_EP_AVAILABLE.
- */
-static bool _out_primed[NRF_USB_NUM_EP];
-static bool _out_armed[NRF_USB_NUM_EP];
-static uint16_t _out_len[NRF_USB_NUM_EP];
+static bool _out_primed[NRF_USB_NUM_EP];  /**< SIZE.EPOUT written once since endpoint init. */
+static bool _out_armed[NRF_USB_NUM_EP];   /**< A buffer is ready to receive the next packet. */
+static uint16_t _out_len[NRF_USB_NUM_EP]; /**< Latched length of the last received packet. */
 
 static void _init(usbdev_t *usbdev);
 static int _get(usbdev_t *usbdev, usbopt_t opt, void *value, size_t max_len);
@@ -246,7 +228,7 @@ static size_t _ep_get_available(usbdev_ep_t *ep)
 
     if (ep->dir == USB_EP_DIR_OUT) {
         if (ep->num != 0) {
-            return _out_len[ep->num];          /* latched before the DMA */
+            return _out_len[ep->num]; /* latched before the DMA */
         }
         return usbdev->device->SIZE.EPOUT[ep->num];
     }
@@ -449,8 +431,6 @@ static void _ep_init(usbdev_ep_t *ep)
         usbdev->device->EVENTS_ENDEPOUT[ep->num] = 0;
         usbdev->device->EPDATASTATUS = 1 << ep->num;
         _out_primed[ep->num] = false;
-        _out_armed[ep->num] = false;
-        _out_len[ep->num] = 0;
     }
     else {
         usbdev->device->EPDATASTATUS = 1 << ep->num;
@@ -610,7 +590,7 @@ static void _esr(usbdev_t *dev)
 static signed _ep0_esr(usbdev_ep_t *ep)
 {
     nrfusb_t *usbdev = (nrfusb_t *)ep->dev;
-    signed event = -1;
+    signed event = 0; /* nothing to report */
 
     if (ep->dir == USB_EP_DIR_OUT) {
         if (usbdev->sstate == NRFUSB_SETUP_ACKOUT) {
@@ -648,7 +628,7 @@ static signed _ep0_esr(usbdev_ep_t *ep)
 static void _ep_esr(usbdev_ep_t *ep)
 {
     nrfusb_t *usbdev = (nrfusb_t *)ep->dev;
-    signed event = -1;
+    signed event = 0; /* nothing to report */
 
     if (ep->num == 0) {
         event = _ep0_esr(ep);
@@ -664,23 +644,19 @@ static void _ep_esr(usbdev_ep_t *ep)
             }
         }
         else {
-            uint32_t bit = 1UL << (ep->num + 16);
-            if ((usbdev->device->EPDATASTATUS & bit) && _out_armed[ep->num]) {
-                /* Packet waiting AND a buffer armed: latch its length (SIZE.EPOUT
-                 * may describe the next packet once ENDEPOUT has fired), clear
-                 * the status bit (before the DMA, so a packet the USBD accepts
-                 * right after ENDEPOUT keeps its bit), copy it out. Not armed:
-                 * leave it in the USBD buffer — the host is NAKed meanwhile —
-                 * and _ep_xmit() posts the ESR again once a buffer is armed. */
+            uint32_t status_bit = 1UL << (ep->num + 16);
+            if ((usbdev->device->EPDATASTATUS & status_bit) && _out_armed[ep->num]) {
                 _out_armed[ep->num] = false;
+                /* Latch the length before the DMA; SIZE.EPOUT may already describe
+                 * the next packet once ENDEPOUT has fired. */
                 _out_len[ep->num] = usbdev->device->SIZE.EPOUT[ep->num];
-                usbdev->device->EPDATASTATUS = bit;
+                /* Clear the status bit before starting the DMA; the USBD may accept
+                 * the next packet as soon as the DMA ends, and a later clear would
+                 * erase its bit. */
+                usbdev->device->EPDATASTATUS = status_bit;
                 /* start dma to transfer payload to memory */
                 _ep_dma_out(ep);
                 event = USBDEV_EVENT_TR_COMPLETE;
-            }
-            else {
-                event = 0;      /* nothing to report */
             }
         }
     }
@@ -748,17 +724,9 @@ void isr_usbd(void)
                 epdatastatus &= ~(1 << epnum);
             }
         }
-        else if (usbdev->device->EVENTS_EPDATA &&
-                 (usbdev->device->INTEN & USBD_INTEN_EPDATA_Msk)) {
-            /*
-             * EPDATA raised, but EPDATASTATUS is already 0: the usbus thread's
-             * _ep_esr() consumed (wrote-1-cleared) the status bit after the
-             * event fired. Nothing to dispatch — but the event is level-
-             * triggered, so it MUST be cleared here, or this ISR re-enters
-             * forever and starves every thread (seen 2026-10-21 under sustained
-             * CDC-ECM traffic: EVENTS_EPDATA=1, EPDATASTATUS=0, INTEN.EPDATA=1;
-             * host log "NETDEV WATCHDOG: transmit queue 0 timed out").
-             */
+        else if (usbdev->device->EVENTS_EPDATA && (usbdev->device->INTEN & USBD_INTEN_EPDATA_Msk)) {
+            /* EPDATASTATUS already cleared and nothing to dispatch,
+             * just clear the irq. */
             usbdev->device->EVENTS_EPDATA = 0;
         }
     }

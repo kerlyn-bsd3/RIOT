@@ -1,15 +1,10 @@
 #! /usr/bin/env python3
 
-#
-# Copyright (C) 2018 Gaëtan Harter <gaetan.harter@fu-berlin.de>
-#
-# This file is subject to the terms and conditions of the GNU Lesser
-# General Public License v2.1. See the file LICENSE in the top level
-# directory for more details.
-#
+# SPDX-FileCopyrightText: 2018 Gaëtan Harter <gaetan.harter@fu-berlin.de>
+# SPDX-License-Identifier: LGPL-2.1-only
 
 """
-lazysponge
+lazysponge: write standard input to a file only if its content changed.
 
 Adaptation of moreutils `sponge` with added functionality that it does not
 modify the output file if the content would be unchanged.
@@ -25,7 +20,6 @@ unchanged.
 
 Note
 ----
-
 It only works with input provided by a `pipe` and not interactive input.
 The reason is that `ctrl+c` would not be handled properly in that case.
 

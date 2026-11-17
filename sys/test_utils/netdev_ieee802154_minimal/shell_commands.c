@@ -1,9 +1,6 @@
 /*
- * Copyright (C) 2022 HAW Hamburg
- *
- * This file is subject to the terms and conditions of the GNU Lesser General
- * Public License v2.1. See the file LICENSE in the top level directory for
- * more details.
+ * SPDX-FileCopyrightText: 2022 HAW Hamburg
+ * SPDX-License-Identifier: LGPL-2.1-only
  */
 
 /**
@@ -99,18 +96,6 @@ int ifconfig_list(int idx)
         printf(", Max.Payload: %u", (unsigned)u16_val);
     }
     printf("\n           Channel: %u", dev->chan);
-
-    res = netdev_ieee802154_minimal_get(netdev, NETOPT_CHANNEL_PAGE, &u16_val, sizeof(u16_val));
-    if (res == -ENOTSUP) {
-        puts(", Ch.page: ENOTSUP");
-    }
-    else if (res < 0) {
-        printf(", Ch.page: %i", (int)res);
-        return 1;
-    }
-    else {
-        printf(", Ch.page: %u", (unsigned)u16_val);
-    }
 
     res = netdev_ieee802154_minimal_get(netdev, NETOPT_TX_POWER, &u16_val, sizeof(u16_val));
     if (res == -ENOTSUP) {

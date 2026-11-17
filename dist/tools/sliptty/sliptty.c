@@ -1,12 +1,8 @@
 /*
- * Copyright (C) 2016 Kaspar Schleiser <kaspar@schleiser.de>
- * Copyright (C) 2018 Freie Universität Berlin
- *
- * This file is subject to the terms and conditions of the GNU General Public
- * License v2. See the file LICENSE for more details.
- *
- * @author  Kaspar Schleiser <kaspar@schleiser.de>
- * @author  Martine Lenders <m.lenders@fu-berlin.de>
+ * SPDX-FileCopyrightText: 2016 Kaspar Schleiser <kaspar@schleiser.de>
+ * SPDX-FileCopyrightText: 2016 Martine Lenders <m.lenders@fu-berlin.de>
+ * SPDX-FileCopyrightText: 2018 Freie Universität Berlin
+ * SPDX-License-Identifier: GPL-2.0-only
  */
 
 #include <ctype.h>
@@ -64,11 +60,13 @@ static void _usage(char *cmd)
 #ifndef __linux__
 static int devopen(const char *dev, int flags)
 {
-    char devpath[1024];
-
-    strcpy(devpath, "/dev/");
-    strncat(devpath, dev, sizeof(devpath) - (sizeof("/dev/") - 1));
-    return open(devpath, flags);
+    char t[1024];
+    int written_len = snprintf(t, sizeof(t), "/dev/%s", dev);
+    if (written_len >= sizeof(t)) {
+        /* we got truncated */
+        return -1;
+    }
+    return open(t, flags);
 }
 #endif
 

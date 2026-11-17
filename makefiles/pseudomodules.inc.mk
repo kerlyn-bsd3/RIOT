@@ -28,7 +28,7 @@
 ## @{
 
 ################################################################################
-# PLEASE KEEP THIS LIST ALPHABETICALL SORTED!!11!!
+# PLEASE KEEP THIS LIST ALPHABETICALLY SORTED!!11!!
 #
 # The entries should be sorted by the module name, so `PSEUDOMODULES` and
 # `NO_PSEUDOMODULES` entries can be mixed.
@@ -49,9 +49,10 @@ PSEUDOMODULES += auto_init_%
 NO_PSEUDOMODULES += auto_init_can
 NO_PSEUDOMODULES += auto_init_loramac
 NO_PSEUDOMODULES += auto_init_multimedia
+NO_PSEUDOMODULES += auto_init_radiolib
+NO_PSEUDOMODULES += auto_init_screen
 NO_PSEUDOMODULES += auto_init_security
 NO_PSEUDOMODULES += auto_init_usbus
-NO_PSEUDOMODULES += auto_init_screen
 NO_PSEUDOMODULES += auto_init_wdt_event
 NO_PSEUDOMODULES += auto_init_wdt_thread
 
@@ -83,8 +84,8 @@ PSEUDOMODULES += can_mbox
 PSEUDOMODULES += can_pm
 PSEUDOMODULES += can_raw
 PSEUDOMODULES += can_rx_mailbox
-PSEUDOMODULES += ccn-lite-utils
 PSEUDOMODULES += cc2538_rf_obs_sig
+PSEUDOMODULES += ccn-lite-utils
 PSEUDOMODULES += conn_can_isotp_multi
 PSEUDOMODULES += cord_ep_standalone
 PSEUDOMODULES += core_%
@@ -110,14 +111,16 @@ PSEUDOMODULES += dbgpin
 PSEUDOMODULES += devfs_%
 PSEUDOMODULES += dhcpv6_%
 PSEUDOMODULES += dhcpv6_client_dns
-PSEUDOMODULES += dhcpv6_client_ia_pd
 PSEUDOMODULES += dhcpv6_client_ia_na
+PSEUDOMODULES += dhcpv6_client_ia_pd
 PSEUDOMODULES += dhcpv6_client_mud_url
 PSEUDOMODULES += dhcpv6_relay
 PSEUDOMODULES += dns_cache
 PSEUDOMODULES += dns_msg
 
 PSEUDOMODULES += ecc_%
+PSEUDOMODULES += efm32_eth_auto
+PSEUDOMODULES += efm32_eth_link_up
 PSEUDOMODULES += ethos_stdio
 PSEUDOMODULES += event_%
 PSEUDOMODULES += event_timeout
@@ -130,10 +133,10 @@ PSEUDOMODULES += fido2_tests
 PSEUDOMODULES += fmt_%
 PSEUDOMODULES += fortuna_reseed
 
+PSEUDOMODULES += gcoap_dtls
+PSEUDOMODULES += gcoap_fileserver
 PSEUDOMODULES += gcoap_forward_proxy
 PSEUDOMODULES += gcoap_forward_proxy_thread
-PSEUDOMODULES += gcoap_fileserver
-PSEUDOMODULES += gcoap_dtls
 ## @addtogroup net_gcoap_dns
 ## @{
 ## Enable @ref net_gcoap_dns
@@ -163,8 +166,6 @@ PSEUDOMODULES += gnrc_ipv6_auto_subnets_simple
 PSEUDOMODULES += gnrc_ipv6_classic
 PSEUDOMODULES += gnrc_ipv6_default
 PSEUDOMODULES += gnrc_ipv6_ext_frag_stats
-PSEUDOMODULES += gnrc_ipv6_router
-PSEUDOMODULES += gnrc_ipv6_router_default
 PSEUDOMODULES += gnrc_ipv6_nib_6lbr
 PSEUDOMODULES += gnrc_ipv6_nib_6ln
 PSEUDOMODULES += gnrc_ipv6_nib_6lr
@@ -173,16 +174,18 @@ PSEUDOMODULES += gnrc_ipv6_nib_dyn_lladdr
 PSEUDOMODULES += gnrc_ipv6_nib_rio
 PSEUDOMODULES += gnrc_ipv6_nib_router
 PSEUDOMODULES += gnrc_ipv6_nib_rtr_adv_pio_cb
+PSEUDOMODULES += gnrc_ipv6_router
+PSEUDOMODULES += gnrc_ipv6_router_default
 PSEUDOMODULES += gnrc_lorawan_1_1
-PSEUDOMODULES += gnrc_neterr
 PSEUDOMODULES += gnrc_netapi_callbacks
 PSEUDOMODULES += gnrc_netapi_mbox
-PSEUDOMODULES += gnrc_netif_bus
-PSEUDOMODULES += gnrc_netif_timestamp
+PSEUDOMODULES += gnrc_neterr
 PSEUDOMODULES += gnrc_netif_6lo
+PSEUDOMODULES += gnrc_netif_bus
+PSEUDOMODULES += gnrc_netif_dedup
 PSEUDOMODULES += gnrc_netif_ipv6
 PSEUDOMODULES += gnrc_netif_single
-PSEUDOMODULES += gnrc_netif_dedup
+PSEUDOMODULES += gnrc_netif_timestamp
 
 
 ## @addtogroup 	net_gnrc_nettype
@@ -237,16 +240,34 @@ PSEUDOMODULES += gnrc_nettype_udp
 ## @}
 ## @}
 
-## @addtogroup	net_gnrc_pktshark
+## @defgroup  net_gnrc_pktshark           GNRC Packetshark
+## @ingroup   net_gnrc
+## @brief Parse and dump received packets.
 ## @{
-## @brief	Enable parsing of IPv6 encapsulated IPv4 packets
+
+## @defgroup  net_gnrc_pktshark_4in6      gnrc_pktshark_4in6
+## @brief Enable parsing of IPv6 encapsulated IPv4 packets
 PSEUDOMODULES += gnrc_pktshark_4in6
-## @brief	Enable parsing of CoAP messages
+
+## @defgroup  net_gnrc_pktshark_all       gnrc_pktshark_all
+## @brief Enable parsing of all supported protocols
+#
+# These are currently @ref net_gnrc_pktshark_4in6, @ref net_gnrc_pktshark_coap,
+# and @ref net_gnrc_pktshark_icmpv6
+PSEUDOMODULES += gnrc_pktshark_all
+
+## @defgroup  net_gnrc_pktshark_coap      gnrc_pktshark_coap
+## @brief Enable parsing of CoAP messages
 PSEUDOMODULES += gnrc_pktshark_coap
-## @brief	Enable parsing of default protocols
+
+## @defgroup  net_gnrc_pktshark_default   gnrc_pktshark_default
+## @brief Enable parsing of protocols supported in this build
 PSEUDOMODULES += gnrc_pktshark_default
-## @brief	Enable parsing of ICMPv6 messages
+
+## @defgroup  net_gnrc_pktshark_icmpv6    gnrc_pktshark_icmpv6
+## @brief Enable parsing of ICMPv6 messages
 PSEUDOMODULES += gnrc_pktshark_icmpv6
+
 ## @}
 
 PSEUDOMODULES += gnrc_sixloenc
@@ -254,9 +275,9 @@ PSEUDOMODULES += gnrc_sixlowpan_border_router_default
 PSEUDOMODULES += gnrc_sixlowpan_default
 PSEUDOMODULES += gnrc_sixlowpan_frag_hint
 PSEUDOMODULES += gnrc_sixlowpan_frag_sfr_ecn
+PSEUDOMODULES += gnrc_sixlowpan_frag_sfr_ecn_fqueue
 PSEUDOMODULES += gnrc_sixlowpan_frag_sfr_ecn_if_in
 PSEUDOMODULES += gnrc_sixlowpan_frag_sfr_ecn_if_out
-PSEUDOMODULES += gnrc_sixlowpan_frag_sfr_ecn_fqueue
 PSEUDOMODULES += gnrc_sixlowpan_frag_sfr_stats
 ##
 ## @addtogroup net_gnrc_sixlowpan_frag_sfr_congure
@@ -299,8 +320,12 @@ PSEUDOMODULES += gnrc_sock_async
 PSEUDOMODULES += gnrc_sock_check_reuse
 PSEUDOMODULES += gnrc_txtsnd
 
+PSEUDOMODULES += ieee802154_rx_timestamp
 PSEUDOMODULES += ieee802154_security
 PSEUDOMODULES += ieee802154_submac
+PSEUDOMODULES += ieee802154_submac_soft_ack
+PSEUDOMODULES += ieee802154_submac_soft_csma_ca
+PSEUDOMODULES += ieee802154_submac_soft_frame_retrans
 PSEUDOMODULES += ipv4
 PSEUDOMODULES += ipv6
 
@@ -317,9 +342,9 @@ PSEUDOMODULES += log
 PSEUDOMODULES += lora
 PSEUDOMODULES += lpc1768_eth_auto
 PSEUDOMODULES += lpc1768_eth_link_up
-PSEUDOMODULES += lwext4_no_gpl
 PSEUDOMODULES += lwext2_vfs
 PSEUDOMODULES += lwext3_vfs
+PSEUDOMODULES += lwext4_no_gpl
 PSEUDOMODULES += lwext4_vfs
 PSEUDOMODULES += lwext4_vfs_format
 
@@ -347,9 +372,9 @@ PSEUDOMODULES += nanocoap_fileserver_callback
 PSEUDOMODULES += nanocoap_fileserver_delete
 PSEUDOMODULES += nanocoap_fileserver_put
 PSEUDOMODULES += netdev_default
+PSEUDOMODULES += netdev_ieee802154
 PSEUDOMODULES += netdev_ieee802154_%
 PSEUDOMODULES += netdev_ieee802154_rx_timestamp
-PSEUDOMODULES += netdev_ieee802154
 NO_PSEUDOMODULES += netdev_ieee802154_submac
 PSEUDOMODULES += netdev_eth
 PSEUDOMODULES += netdev_layer
@@ -357,28 +382,28 @@ PSEUDOMODULES += netdev_legacy_api
 PSEUDOMODULES += netdev_new_api
 PSEUDOMODULES += netdev_register
 PSEUDOMODULES += netstats
-PSEUDOMODULES += netstats_l2
-PSEUDOMODULES += netstats_neighbor_etx
-PSEUDOMODULES += netstats_neighbor_count
-PSEUDOMODULES += netstats_neighbor_rssi
-PSEUDOMODULES += netstats_neighbor_lqi
-PSEUDOMODULES += netstats_neighbor_tx_time
 PSEUDOMODULES += netstats_ipv6
+PSEUDOMODULES += netstats_l2
+PSEUDOMODULES += netstats_neighbor_count
+PSEUDOMODULES += netstats_neighbor_etx
+PSEUDOMODULES += netstats_neighbor_lqi
+PSEUDOMODULES += netstats_neighbor_rssi
+PSEUDOMODULES += netstats_neighbor_tx_time
 PSEUDOMODULES += netstats_rpl
-PSEUDOMODULES += nimble
-PSEUDOMODULES += nimble_adv_ext
-PSEUDOMODULES += nimble_autoconn_%
-PSEUDOMODULES += nimble_netif_ext
-PSEUDOMODULES += nimble_phy_coded
-PSEUDOMODULES += nimble_phy_2mbit
-PSEUDOMODULES += nimble_rpble_ext
-PSEUDOMODULES += nimble_statconn_ext
-PSEUDOMODULES += nimble_autoadv_shell
-PSEUDOMODULES += nrfx
 PSEUDOMODULES += newlib
 PSEUDOMODULES += newlib_gnu_source
 PSEUDOMODULES += newlib_nano
+PSEUDOMODULES += nimble
+PSEUDOMODULES += nimble_adv_ext
+PSEUDOMODULES += nimble_autoadv_shell
+PSEUDOMODULES += nimble_autoconn_%
+PSEUDOMODULES += nimble_netif_ext
+PSEUDOMODULES += nimble_phy_2mbit
+PSEUDOMODULES += nimble_phy_coded
+PSEUDOMODULES += nimble_rpble_ext
+PSEUDOMODULES += nimble_statconn_ext
 PSEUDOMODULES += nrf24l01p_ng_diagnostics
+PSEUDOMODULES += nrfx
 
 # print ascii representation in function od_hex_dump()
 PSEUDOMODULES += od_string
@@ -414,25 +439,25 @@ PSEUDOMODULES += prng
 # add all pseudo random number generator variants as pseudomodules
 PSEUDOMODULES += prng_%
 
-PSEUDOMODULES += psa_riot_cipher_aes_common
-PSEUDOMODULES += psa_riot_cipher_aes_128_ecb
 PSEUDOMODULES += psa_riot_cipher_aes_128_cbc
+PSEUDOMODULES += psa_riot_cipher_aes_128_ecb
 PSEUDOMODULES += psa_riot_cipher_aes_192_cbc
 PSEUDOMODULES += psa_riot_cipher_aes_256_cbc
+PSEUDOMODULES += psa_riot_cipher_aes_common
 PSEUDOMODULES += psa_riot_cipher_chacha20
+PSEUDOMODULES += psa_riot_hashes_hmac_sha256
 PSEUDOMODULES += psa_riot_hashes_md5
+PSEUDOMODULES += psa_riot_hashes_sha3_256
+PSEUDOMODULES += psa_riot_hashes_sha3_384
+PSEUDOMODULES += psa_riot_hashes_sha3_512
 PSEUDOMODULES += psa_riot_hashes_sha_1
 PSEUDOMODULES += psa_riot_hashes_sha_224
 PSEUDOMODULES += psa_riot_hashes_sha_256
 PSEUDOMODULES += psa_riot_hashes_sha_384
 PSEUDOMODULES += psa_riot_hashes_sha_512
-PSEUDOMODULES += psa_riot_hashes_sha3_256
-PSEUDOMODULES += psa_riot_hashes_sha3_384
-PSEUDOMODULES += psa_riot_hashes_sha3_512
 PSEUDOMODULES += psa_riot_hashes_sha_512_224
 PSEUDOMODULES += psa_riot_hashes_sha_512_256
-PSEUDOMODULES += psa_riot_hashes_hmac_sha256
-
+PSEUDOMODULES += radiolib
 PSEUDOMODULES += riotboot_%
 PSEUDOMODULES += rtt_cmd
 
@@ -476,7 +501,9 @@ PSEUDOMODULES += shell_builtin_cmd_help_json
 PSEUDOMODULES += shell_cmd_app_metadata
 PSEUDOMODULES += shell_cmd_at30tse75x
 PSEUDOMODULES += shell_cmd_benchmark_udp
+PSEUDOMODULES += shell_cmd_bplib
 PSEUDOMODULES += shell_cmd_ccn-lite-utils
+PSEUDOMODULES += shell_cmd_coap
 PSEUDOMODULES += shell_cmd_conn_can
 PSEUDOMODULES += shell_cmd_cord_ep
 PSEUDOMODULES += shell_cmd_coreclk
@@ -536,8 +563,8 @@ PSEUDOMODULES += shell_cmd_sys
 PSEUDOMODULES += shell_cmd_udp
 PSEUDOMODULES += shell_cmd_udp_server
 PSEUDOMODULES += shell_cmd_udptty
-PSEUDOMODULES += shell_cmd_xipfs
 PSEUDOMODULES += shell_cmd_vfs
+PSEUDOMODULES += shell_cmd_xipfs
 PSEUDOMODULES += shell_cmds_default
 PSEUDOMODULES += shell_hooks
 PSEUDOMODULES += shell_lock_auto_locking
@@ -549,10 +576,10 @@ PSEUDOMODULES += shield_w5100
 PSEUDOMODULES += skald_ibeacon
 PSEUDOMODULES += skald_eddystone
 
+PSEUDOMODULES += slipdev
 PSEUDOMODULES += slipdev_config
 PSEUDOMODULES += slipdev_l2addr
 PSEUDOMODULES += slipdev_net
-PSEUDOMODULES += slipdev
 PSEUDOMODULES += sock
 PSEUDOMODULES += sock_async
 PSEUDOMODULES += sock_aux_local
@@ -579,6 +606,7 @@ PSEUDOMODULES += stdio_default
 PSEUDOMODULES += stdio_dispatch
 PSEUDOMODULES += stdio_ethos
 PSEUDOMODULES += stdio_nimble_debug
+PSEUDOMODULES += stdio_notify
 PSEUDOMODULES += stdio_slipdev
 PSEUDOMODULES += stdio_telnet
 ## @defgroup sys_stdio_uart_onlcr   Support for DOS line endings in STDIO-UART
@@ -596,8 +624,8 @@ PSEUDOMODULES += stm32_eth_tracing
 # STM32 periph pseudomodules
 PSEUDOMODULES += stm32_periph_%
 PSEUDOMODULES += stm32mp1_eng_mode
-PSEUDOMODULES += suit_transport_%
 PSEUDOMODULES += suit_storage_%
+PSEUDOMODULES += suit_transport_%
 PSEUDOMODULES += sys_bus_%
 
 # declare shell version of test_utils_interactive_sync
@@ -607,11 +635,23 @@ PSEUDOMODULES += test_utils_main_exit_cb
 PSEUDOMODULES += tiny_strerror_as_strerror
 PSEUDOMODULES += tiny_strerror_minimal
 
+# Request cancellation support
+PSEUDOMODULES += unicoap_client_cancellation
+
+# URI support in unicoap client API
+PSEUDOMODULES += unicoap_client_uri
+
 # An umbrella module for the unicoap_driver_rfc7252_common_pdu
 # and unicoap_driver_rfc7252_common_messaging modules
 PSEUDOMODULES += unicoap_driver_rfc7252_common
 # Alias for unicoap_driver_rfc7252_common_pdu, and is hence a pseudomodule
 PSEUDOMODULES += unicoap_driver_rfc7252_pdu
+
+# XFA support for CoAP resource definitions in unicoap server
+PSEUDOMODULES += unicoap_server_resource_declarations
+
+# Common sock dependencies of sock-based CoAP drivers in unicoap
+PSEUDOMODULES += unicoap_sock_support
 
 PSEUDOMODULES += usbus_urb
 
@@ -653,6 +693,8 @@ PSEUDOMODULES += wakaama_objects_%
 PSEUDOMODULES += walltime_default
 PSEUDOMODULES += walltime_impl_ds1307
 PSEUDOMODULES += walltime_impl_ds3231
+PSEUDOMODULES += walltime_impl_max31331
+PSEUDOMODULES += walltime_impl_max31343
 PSEUDOMODULES += walltime_impl_rtc
 PSEUDOMODULES += wifi_enterprise
 PSEUDOMODULES += wifi_scan_list
@@ -662,8 +704,8 @@ PSEUDOMODULES += xtimer_no_ztimer_default
 
 PSEUDOMODULES += zptr
 PSEUDOMODULES += ztimer
-PSEUDOMODULES += ztimer_%
 PSEUDOMODULES += ztimer64_%
+PSEUDOMODULES += ztimer_%
 
 ## @defgroup pseudomodule_ztimer_auto_adjust ztimer_auto_adjust
 ## @brief A module to set on init ztimer->adjust_sleep/adjust_set values

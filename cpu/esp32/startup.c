@@ -22,6 +22,7 @@
 #include <sys/reent.h>
 
 /* RIOT headers have to be included before ESP-IDF headers! */
+#include "auto_init_utils.h"
 #include "board.h"
 #include "esp/common_macros.h"
 #include "exceptions.h"
@@ -42,7 +43,11 @@
 /* ESP-IDF headers */
 #include "esp_attr.h"
 #include "esp_clk_internal.h"
+#include "esp_clk_tree.h"
 #include "esp_heap_caps_init.h"
+#if IS_ACTIVE(CONFIG_ESP_COEX_SW_COEXIST_ENABLE)
+#  include "private/esp_coexist_internal.h"
+#endif
 #include "esp_log.h"
 #include "esp_private/startup_internal.h"
 #include "esp_private/esp_clk.h"
@@ -128,6 +133,22 @@ esp_err_t esp_timer_impl_early_init(void)
 }
 #endif
 
+#if IS_USED(MODULE_ESP_IDF_HEAP) && IS_USED(MODULE_AUTO_INIT)
+/*
+ * The memory region of the ROM stack is used as stack during the startup
+ * before the RIOT kernel is started. It must therefore not be added to the
+ * heap before the first thread is running. Otherwise, memory allocated
+ * during the startup, e.g. for thread stacks, may overlap with the stack
+ * that is still in use.
+ */
+static void _heap_add_startup_stack(void)
+{
+    heap_caps_enable_nonos_stack_heaps();
+}
+
+AUTO_INIT(_heap_add_startup_stack, 1000);
+#endif
+
 /**
  * @brief   System startup function
  *
@@ -151,7 +172,6 @@ static NORETURN void IRAM system_startup_cpu0(void)
 #if IS_USED(MODULE_ESP_IDF_HEAP)
     /* init heap */
     heap_caps_init();
-    heap_caps_enable_nonos_stack_heaps();
     if (IS_ACTIVE(ENABLE_DEBUG)) {
         ets_printf("Heap free: %u byte\n", get_free_heap_size());
     }
@@ -251,6 +271,15 @@ static NORETURN void IRAM system_init (void)
     /* init random number generator */
     srand(hwrand());
 
+#if IS_ACTIVE(CONFIG_ESP_COEX_SW_COEXIST_ENABLE)
+    /* Pre-initialize the software coexistence of the radio modules before
+     * any of them is initialized. This is done by the ESP-IDF system init
+     * function `init_coexist` in ESP-IDF, which is not used by RIOT. */
+    extern coex_adapter_funcs_t g_coex_adapter_funcs;
+    esp_coex_adapter_register(&g_coex_adapter_funcs);
+    coex_pre_init();
+#endif
+
     /* add SPI RAM to heap if enabled */
 #if CONFIG_SPIRAM && CONFIG_SPIRAM_BOOT_INIT
     esp_psram_extram_add_to_heap_allocator();
@@ -260,13 +289,18 @@ static NORETURN void IRAM system_init (void)
 #endif
 
     /* print some infos */
-    LOG_STARTUP("Used clocks in Hz: CPU=%d APB=%d XTAL=%d FAST=%d SLOW=%d\n",
+    uint32_t rtc_fast_freq = 0;
+    esp_clk_tree_src_get_freq_hz(SOC_MOD_CLK_RTC_FAST,
+                                 ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED,
+                                 &rtc_fast_freq);
+    LOG_STARTUP("Used clocks in Hz: CPU=%d APB=%d XTAL=%d FAST=%"PRIu32" SLOW=%"PRIu32"\n",
                 esp_clk_cpu_freq(),
                 esp_clk_apb_freq(), esp_clk_xtal_freq(),
-                rtc_clk_fast_freq_get() == RTC_FAST_FREQ_8M ? 8 * MHZ
-                                                            : esp_clk_xtal_freq()/4,
+                rtc_fast_freq,
                 rtc_clk_slow_freq_get_hz());
-    LOG_STARTUP("RTC Slow Clock calibration value: %d\n", esp_clk_slowclk_cal_get());
+    (void)rtc_fast_freq;
+    LOG_STARTUP("RTC Slow Clock calibration value: %"PRIu32"\n",
+                esp_clk_slowclk_cal_get());
     LOG_STARTUP("Heap free: %u bytes\n", get_free_heap_size());
 
     /* initialize architecture specific interrupt handling */

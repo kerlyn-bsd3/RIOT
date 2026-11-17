@@ -1,11 +1,8 @@
-# Copyright (C) 2018-19 Freie Universität Berlin
-#               2017 Cenk Gündoğan <cenk.guendogan@haw-hamburg.de>
-#               2016 Kaspar Schleiser <kaspar@schleiser.de>
-#               2014 Martine Lenders <mlenders@inf.fu-berlin.de>
-#
-# This file is subject to the terms and conditions of the GNU Lesser
-# General Public License v2.1. See the file LICENSE in the top level
-# directory for more details.
+# SPDX-FileCopyrightText: 2018-2019 Freie Universität Berlin
+# SPDX-FileCopyrightText: 2017 Cenk Gündoğan <cenk.guendogan@haw-hamburg.de>
+# SPDX-FileCopyrightText: 2016 Kaspar Schleiser <kaspar@schleiser.de>
+# SPDX-FileCopyrightText: 2014 Martine Lenders <mlenders@inf.fu-berlin.de>
+# SPDX-License-Identifier: LGPL-2.1-only
 
 import os
 import pexpect
@@ -48,6 +45,15 @@ TESTRUNNER_RESET_BOARD_ON_STARTUP = \
     int(os.environ.get('TESTRUNNER_RESET_BOARD_ON_STARTUP') or 1)
 
 MAKE = os.environ.get('MAKE', 'make')
+
+
+def flush_child(child, expect_timeout=0.1):
+    """Flush the child from garbage that might be sent by device on start."""
+    while True:
+        try:
+            child.expect(r".+", timeout=expect_timeout)
+        except pexpect.TIMEOUT:
+            return
 
 
 def _reset_board(env):
@@ -128,7 +134,10 @@ def sync_child(child, env):
             utils.test_utils_interactive_sync_shell(child,
                                                     TEST_INTERACTIVE_RETRIES,
                                                     TEST_INTERACTIVE_DELAY)
+            flush_child(child)
+            child.sendline("")   # restore next prompt in case the app expects it
         else:
+            flush_child(child)
             utils.test_utils_interactive_sync(child,
                                               TEST_INTERACTIVE_RETRIES,
                                               TEST_INTERACTIVE_DELAY)

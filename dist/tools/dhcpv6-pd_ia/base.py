@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
-#
-# Copyright (C) 2020 Freie Universität Berlin
-#
-# This file is subject to the terms and conditions of the GNU Lesser
-# General Public License v2.1. See the file LICENSE in the top level
-# directory for more details.
 
+# SPDX-FileCopyrightText: 2020 Freie Universität Berlin
+# SPDX-License-Identifier: LGPL-2.1-only
 
 import atexit
 import os
@@ -30,9 +26,7 @@ __email__ = "m.lenders@fu-berlin.de"
 
 # see https://refactoring.guru/design-patterns/singleton/python/example
 class _SingletonMeta(type):
-    """
-    This is a thread-safe implementation of Singleton.
-    """
+    """This is a thread-safe implementation of Singleton."""
 
     _instance = None
 
@@ -62,10 +56,13 @@ class _SingletonMeta(type):
 
 class DHCPv6Server(metaclass=_SingletonMeta):
     """
+    DHCPv6 server that can optionally be run as daemon.
+
     Inspired by Daemon class
     https://web.archive.org/web/20160305151936/\
     http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
     """
+
     PORT = 547
     command = None
     package = None
@@ -94,8 +91,9 @@ class DHCPv6Server(metaclass=_SingletonMeta):
 
     def daemonize(self):
         """
-        do the UNIX double-fork magic, see Stevens' "Advanced
-        Programming in the UNIX Environment" for details (ISBN 0201563177)
+        Do the UNIX double-fork magic.
+
+        See Stevens' "Advanced Programming in the UNIX Environment" for details (ISBN 0201563177)
         http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
         """
         try:
@@ -145,9 +143,7 @@ class DHCPv6Server(metaclass=_SingletonMeta):
         os.remove(self.pidfile)
 
     def stop(self):
-        """
-        Stop the daemon
-        """
+        """Stop the daemon."""
         # Get the pid from the pidfile
         try:
             pf = open(self.pidfile, 'r')

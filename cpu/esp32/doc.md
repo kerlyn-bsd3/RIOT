@@ -24,9 +24,7 @@ This document describes the RIOT implementation for supported variants
 
 @author     Gunar Schorcht <gunar@schorcht.net>
 
-\section esp32_riot  RIOT-OS on ESP32 SoC Series Boards
-
-## Table of Contents {#esp32_toc}
+# Table of Contents {#esp32_toc}
 
 1. [Overview](#esp32_overview)
 2. [Short Configuration Reference](#esp32_short_configuration_reference)
@@ -155,7 +153,7 @@ Module                                              | Default   | Short descript
 [esp_log_startup](#esp32_esp_log_module)            | not used  | enable additional startup information
 [esp_log_tagged](#esp32_esp_log_module)             | not used  | add additional information to the log output
 [esp_now](#esp32_esp_now_network_interface)         | not used  | enable the ESP-NOW network device
-[esp_qemu](#esp32_esp_qemu)                         | not used  | build QEMU for ESP32 application image
+[esp_qemu](#esp32_qemu_mode_and_gdb)                | not used  | build QEMU for ESP32 application image
 [esp_spi_oct](#esp32_spi_ram)                       | not used  | enable SPI RAM in Octal SPI Mode
 [esp_rtc_timer_32k](#esp32_rtt_counter)             | not used  | use RTC timer with external 32.768 kHz crystal as RTT
 [esp_spi_ram](#esp32_spi_ram)                       | not used  | enable SPI RAM
@@ -777,7 +775,7 @@ want to use these memory areas as heap, you have to use the heap implementation
 from the ESP-IDF SDK. ESP-IDF heap is not used by default. To use it, it has to
 be enabled by the makefile of the application:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-USEMODULE += esp_heap
+USEMODULE += esp_idf_heap
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 @note
@@ -1610,7 +1608,7 @@ If this start address is set to 0, as in the default board configuration,
 the first possible multiple of 0x100000 (1 MiB) will be used in the free
 SPI flash memory determined from the partition table.
 
-Please refer file `$RIOTBASE/tests/unittests/test-spiffs/tests-spiffs.c` for
+Please refer file `$RIOTBASE/tests/pkg/spiffs/main.c` for
 more information on how to use SPIFFS and VFS together with a MTD device `mtd0`
 alias `MTD_0`.
 
@@ -1974,7 +1972,7 @@ documentation for the GPIOs recommended for the ENC28J60.
 
 @note The reset signal of the ENC28J60 based network device can be connected
 with the ESP32x RESET/EN pin  which is broken out on most boards. This keeps the
-GPIO free defined by `#ENC28J60_PARAM_RESET` free for other purposes.
+GPIO free defined by `ENC28J60_PARAM_RESET` free for other purposes.
 
 [Back to table of contents](#esp32_toc)
 

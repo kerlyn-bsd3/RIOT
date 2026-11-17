@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2026 Hamburg University of Technology (TUHH)
+ * SPDX-FileCopyrightText: 2026 Technische Universität Hamburg
  * SPDX-License-Identifier: LGPL-2.1-only
  *
  * Based on bplib's example implementation in [bplib]/app/src/bpcat_cla.c
@@ -65,8 +65,11 @@ static void* cla_udp_in(bplib_cla_udp_t * cla)
                 DEBUG("BPLib_CLA_Ingress Fail RC=%"PRId32"\n", bp_status);
             }
         }
-        else if (rv < 0 && rv != -ETIMEDOUT) {
-            DEBUG("sock_udp_recv() failed");
+        /* Terminate on error except for these cases:
+         * - Normal periodic timeout
+         * - UDP received from other IP (just keep listening) */
+        else if ((rv < 0) && (rv != -ETIMEDOUT) && (rv != -EPROTO)) {
+            DEBUG("sock_udp_recv() failed: %i\n", rv);
             return NULL;
         }
     }

@@ -5,7 +5,8 @@
 # When the docker image is updated, checks at
 # dist/tools/buildsystem_sanity_check/check.sh start complaining in CI, and
 # provide the latest values to verify and fill in.
-DOCKER_TESTED_IMAGE_REPO_DIGEST := 84746b38b9a6248a21bfa2f9bd4d7a052870c35a689d9b32a06be2f5d7042156
+
+DOCKER_TESTED_IMAGE_REPO_DIGEST := 64b8e341a0ad96309c46169f6425e84e00bfc21291044db1c88c723e523a0a90
 
 DOCKER_PULL_IDENTIFIER := docker.io/riot/riotbuild@sha256:$(DOCKER_TESTED_IMAGE_REPO_DIGEST)
 export DOCKER_IMAGE ?= $(DOCKER_PULL_IDENTIFIER)
@@ -26,8 +27,9 @@ DOCKER_MAKECMDGOALS_POSSIBLE := \
   tests-% \
   #
 
-# On native, we also can run the test in docker
+# On native, we also can run the flash and test in docker
 ifneq (, $(filter native%,$(BOARD)))
+  DOCKER_MAKECMDGOALS_POSSIBLE += flash
   DOCKER_MAKECMDGOALS_POSSIBLE += test
 endif
 
@@ -54,7 +56,6 @@ export DOCKER_ENV_VARS += \
   AR \
   AS \
   ASFLAGS \
-  BINDIR \
   BINDIRBASE \
   BOARD \
   BOARDS \
@@ -69,6 +70,7 @@ export DOCKER_ENV_VARS += \
   CXX \
   CXXEXFLAGS \
   CXXUWFLAGS \
+  DEVELHELP \
   $(DOCKER_RIOT_CONFIG_VARIABLES) \
   ELFFILE \
   FLASHFILE \
@@ -85,6 +87,7 @@ export DOCKER_ENV_VARS += \
   PREFIX \
   PROGRAMMER \
   QUIET \
+  QUIETER \
   RIOT_CI_BUILD \
   RIOT_VERSION \
   RIOT_VERSION_CODE \
@@ -300,6 +303,13 @@ DOCKER_VOLUMES_AND_ENV += $(call docker_volume,$(HOME)/.cargo/git,$(DOCKER_BUILD
 DOCKER_VOLUMES_AND_ENV += -e 'TZ=$(HOST_TIMEZONE)'
 DOCKER_VOLUMES_AND_ENV += -e 'RIOTBASE=$(DOCKER_RIOTBASE)'
 DOCKER_VOLUMES_AND_ENV += -e 'CCACHE_BASEDIR=$(DOCKER_RIOTBASE)'
+
+# Only export the BINDIR path if it is not the standard path.
+# We have to check it this way since BINDIR is often overridden and we can not
+# reliably check it's origin.
+ifneq ($(BINDIR),$(BINDIRBASE)/$(BOARD))
+  DOCKER_VOLUMES_AND_ENV += $(call docker_volume_and_env,BINDIR,,bindir)
+endif
 
 DOCKER_VOLUMES_AND_ENV += $(call docker_volume_and_env,BUILD_DIR,,build)
 

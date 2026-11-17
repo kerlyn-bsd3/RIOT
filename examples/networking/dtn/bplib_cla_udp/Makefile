@@ -9,7 +9,7 @@ RIOTBASE ?= $(CURDIR)/../../../..
 
 # Include bplib and the configuration modules
 USEPKG += bplib
-USEMODULE += bplib_stor_vfs_ordered     # Ordered/Hierarchical storage
+USEMODULE += bplib_stor_vfs             # VFS based storage
 USEMODULE += bplib_cla_udp              # UDPCL
 
 # The number of contacts that bplib uses / the number of tables reserved.
@@ -48,6 +48,7 @@ endif
 CFLAGS += -DBPLIB_LOCAL_EID_NODE_NUM=$(LOCAL_EID_NODE)
 
 USEMODULE += shell
+USEMODULE += shell_cmd_bplib
 USEMODULE += shell_cmd_ps
 USEMODULE += shell_cmd_gnrc_netif
 

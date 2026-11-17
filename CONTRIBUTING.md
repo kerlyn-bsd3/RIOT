@@ -10,6 +10,7 @@ of this document using the following links:
 * [Writing Documentation][writing-documentation]
 * [Working with Git][working with git]
 * [Mediate Conflicts][mediate-conflicts]
+* [Extractive Contributions][extractive-contributions]
 
 If you have questions, please write a post over at our [forum] or chat on
 `#riot-os:matrix.org` on [Matrix].
@@ -216,22 +217,19 @@ into the source repository.
 Documentation improvements are always welcome and a good starting point for
 new contributors. This kind of contribution is merged quite quickly in general.
 
-RIOT documentation is built with [doxygen][doxygen]. Doxygen is configured to
-parse header (.h) and `doc.txt` files in the RIOT source code to generate
-the modules, cpus, boards and packages documentation.
-General documentation pages are written in Markdown and located in
-`doc/doxygen/src`.
+RIOT documentation is built with [Doxygen][doxygen] and [Starlight][starlight].
+Doxygen reads files in the RIOT source code to generate
+the modules, CPUs, boards and packages API documentation.
+Starlight is used to generate the guides and tutorials.
 
-To generate the documentation, simply run the following
-from the base directory of the RIOT source code.
-
-```shell
-make doc
-```
-
-The generated documentation is located in `doc/doxygen/html`
+Refer to the [How to Doc guide][how-to-doc] for more information on how to write guides
+and [coding conventions documentation][coding-conventions-documentation]
+for more information on how to write code documentation.
 
 [doxygen]: http://www.doxygen.nl/
+[starlight]: https://starlight.astro.build/
+[how-to-doc]: https://guide.riot-os.org/misc/how_to_doc/
+[coding-conventions-documentation]: https://guide.riot-os.org/c_tutorials/coding_conventions/#documentation
 
 ## Working with Git
 [working with git]: #working-with-git
@@ -436,3 +434,22 @@ Note: Violations of our [code of conduct][code-of-conduct] should be reported
 [code-of-conduct]: https://guide.riot-os.org/general/code_of_conduct/
 [email-mediator]: mailto:mediation@riot-os.org
 [email-coc]: mailto:conduct@riot-os.org
+
+## Extractive Contributions
+[extractive-contributions]: #extractive-contributions
+
+Please be aware that we may close issues and pull requests
+that we consider as [extractive contribution][guide-extractive-contributions].
+
+[guide-extractive-contributions]: https://guides.riot-os.org/general/ai_policy/#extractive-contributions
+
+If your contribution has been closed as extractive contribution, this does not mean
+that you are not welcome to our community. If you are willing to invest time
+and to learn, we are more than happy to guide and help you. A good first step to
+show that you are willing to invest time is to follow [our guide][guide] to set
+up your development system, so that you can compile and test your contributions.
+A good second step would be to go [through our tutorials][tutorials] with little
+to no help of an LLM. We are also happy to answer your questions about the
+tutorials, if you get stuck.
+
+[tutorials]: https://github.com/riot-os/tutorials

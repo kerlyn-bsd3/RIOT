@@ -44,7 +44,7 @@ ESP32-Ethernet-Kit has the following on-board components
 * USB bridge with JTAG interface
 
 For detailed information about the configuration of ESP32 boards, see
-section Peripherals in \ref esp32_riot.
+section Peripherals in \ref cpu_esp32.
 
 The board is available in different versions. See the per-version file for
 details.
@@ -81,7 +81,7 @@ Therefore the variable `PORT` only needs to be defined if the console port is
 another port.
 
 For detailed information about ESP32 as well as configuring and compiling RIOT
-for ESP32 boards, see \ref esp32_riot.
+for ESP32 boards, see \ref cpu_esp32.
 
 ## On-Chip Debugging with the Device {#esp32_ethernet_kit_debugging}
 
@@ -104,8 +104,8 @@ set to ON.
 
 To flash and debug using OpenOCD, the precompiled version of OpenOCD for
 ESP32 has to be installed using the install script while being in RIOT's
-root directory, see also section [Using Local Toolchain Installation]
-(#esp32_local_toolchain_installation).
+root directory, see also section
+[Using Local Toolchain Installation](#esp32_local_toolchain_installation).
 
 ```shell
 dist/tools/esptool/install.sh openocd

@@ -1,9 +1,6 @@
 /*
- * Copyright (C) 2018 Mesotic SAS
- *
- * This file is subject to the terms and conditions of the GNU Lesser General
- * Public License v2.1. See the file LICENSE in the top level directory for
- * more details.
+ * SPDX-FileCopyrightText: 2018 Mesotic SAS
+ * SPDX-License-Identifier: LGPL-2.1-only
  */
 
 #pragma once
@@ -40,6 +37,7 @@
  * @author      Koen Zandberg <koen@bergzand.net>
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "usb/cdc.h"
 #include "usb/usbus.h"
@@ -161,6 +159,7 @@ struct usbus_cdcacm_device {
     tsrb_t tsrb;                        /**< TSRB for data to the host       */
     usbus_t *usbus;                     /**< USBUS reference                 */
     size_t occupied;                    /**< Number of bytes for the host    */
+    bool in_busy;                       /**< IN transfer pending             */
     usbus_cdcacm_line_state_t state;    /**< Current line state              */
     event_t flush;                      /**< device2host forced flush event  */
     usb_req_cdcacm_coding_t coding;     /**< Current coding configuration    */

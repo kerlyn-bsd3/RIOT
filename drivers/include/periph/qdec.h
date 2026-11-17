@@ -125,7 +125,7 @@ typedef void (*qdec_cb_t)(void *arg);
 /**
  * @brief   Default interrupt context entry holding callback and argument
  */
-#ifndef HAVE_TIMER_ISR_CTX_T
+#ifndef HAVE_QDEC_ISR_CTX_T
 typedef struct {
     qdec_cb_t cb;           /**< callback executed from qdec interrupt */
     void *arg;              /**< optional argument given to that callback */
@@ -144,6 +144,10 @@ typedef struct {
  *
  * On QDEC counter overflow, an interrupt is triggered.
  * The interruption calls the callback defined.
+ *
+ * @pre     The QDEC device must not be active when calling `qdec_init()`. It
+ *          must either not have been initialized before or it must be stopped
+ *          with @ref qdec_stop before calling `qdec_init()` again.
  *
  * @param[in] dev           QDEC device to initialize
  * @param[in] mode          QDEC mode : X1, X2 or X4

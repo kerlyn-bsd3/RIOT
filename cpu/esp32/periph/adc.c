@@ -104,8 +104,10 @@ int adc_init(adc_t line)
     /* get the RTCIO pin number for the given GPIO defined as ADC channel */
     uint8_t rtcio = _gpio_rtcio_map[adc_channels[line]];
 
-    /* check whether the pin is not used for other purposes */
-    if (gpio_get_pin_usage(_adc_hw[rtcio].gpio) != _GPIO) {
+    /* check whether the pin is not used for other purposes, a pin that is
+     * already used as ADC input can be initialized again */
+    gpio_pin_usage_t usage = gpio_get_pin_usage(_adc_hw[rtcio].gpio);
+    if ((usage != _GPIO) && (usage != _ADC)) {
         LOG_TAG_ERROR("adc", "GPIO%d is used for %s and cannot be used as "
                       "ADC input\n", _adc_hw[rtcio].gpio,
                       gpio_get_pin_usage_str(_adc_hw[rtcio].gpio));
@@ -187,14 +189,6 @@ int adc_raw_to_voltage(adc_t line, int raw, int *voltage)
         *voltage = raw * (max - min) / 4096 + min;
         return -EINVAL;
     }
-}
-
-__attribute__((__deprecated__))
-int adc_line_vref_to_gpio(adc_t line, gpio_t gpio)
-{
-    LOG_TAG_ERROR("adc", "%s is no longer supported\n", __func__);
-    assert(0);
-    return 0;
 }
 
 static void _adc_driver_init(void)

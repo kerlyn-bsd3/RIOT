@@ -1,8 +1,5 @@
-# Copyright (C) 2020 Freie Universität Berlin
-#
-# This file is subject to the terms and conditions of the GNU Lesser
-# General Public License v2.1. See the file LICENSE in the top level
-# directory for more details.
+# SPDX-FileCopyrightText: 2020 Freie Universität Berlin
+# SPDX-License-Identifier: LGPL-2.1-only
 
 """
 Shell interactions related to network interfaces
@@ -13,7 +10,6 @@ Defines shell command interactions related to network interfaces
 import re
 
 from riotctrl.shell import ShellInteraction, ShellInteractionParser
-
 
 # ==== Parsers ====
 
@@ -321,9 +317,10 @@ class Ifconfig(ShellInteraction):
         )
 
     def ifconfig_add(self, netif, addr, anycast=False, timeout=-1, async_=False):
-        args = ["add", addr]
+        args = ["add"]
         if anycast:
             args.append("anycast")
+        args.append(addr)
         return self._ifconfig_success_cmd(
             netif=netif, args=args, timeout=timeout, async_=async_
         )

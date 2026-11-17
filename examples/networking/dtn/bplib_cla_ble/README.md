@@ -14,11 +14,11 @@ MAC address to connect to should also be set with the `REMOTE` flag.
 
 So either `make all ROLE=client REMOTE=d8:6b:d5:e9:ca:99` or `make all ROLE=server`.
 
-When both devices are running, bundles can be exchanged by using the `bp` shell command.
+When both devices are running, bundles can be exchanged by using the `bplib` shell command.
 
 In this version no storage is used (`bplib_stor_void`) and bundles that cannot be
 delivered immediately will be dropped. <br>
 This can be changed in the Makefile by selecting a different storage
-module (`bplib_stor_vfs_ordered` or `bplib_stor_vfs_unordered`), a vfs implementation.
+module (`bplib_stor_vfs`), and a vfs implementation.
 Refer to the UDPCL example Makefile for more details, of how to set the path under which
 bundles are saved.

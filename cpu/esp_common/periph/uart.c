@@ -72,19 +72,15 @@
 #include "soc/uart_pins.h"
 
 #undef  UART_CLK_FREQ
-
 #if CPU_FAM_ESP32 || CPU_FAM_ESP32S2 || CPU_FAM_ESP32S3 || CPU_FAM_ESP32C3
-/* UART_CLK_FREQ corresponds to APB_CLK_FREQ for ESP32, ESP32-S2, ESP32-S3,
- * ESP32-C2 and ESP32-C3, which is a fixed frequency of 80 MHz. However,
- * this only applies to CPU clock frequencies of 80 MHz and above.
- * For lower CPU clock frequencies, the APB clock corresponds to the CPU clock
- * frequency. Therefore, we need to determine the actual UART clock frequency
- * from the actual APB clock frequency. */
+/* For ESP32, ESP32-S2, ESP32-S3, ESP32-C2 and ESP32-C3, the UART_CLK_FREQ
+ * is based on APB_CLK_FREQ. This is fixed at 80MHz for CPU clock frequencies
+ * >=80MHz and equal to the CPU clock frequency for CPU clock frequencies <80Mhz. */
 #  define UART_CLK_FREQ rtc_clk_apb_freq_get() /* APB_CLK is used */
 #elif CPU_FAM_ESP32C6
-#  define UART_CLK_FREQ (CLK_LL_PLL_80M_FREQ_MHZ * MHZ)  /* PLL_F80M_CLK is used */
+#  define UART_CLK_FREQ ((uint32_t)CLK_LL_PLL_80M_FREQ_MHZ * MHZ)  /* PLL_F80M_CLK is used */
 #elif CPU_FAM_ESP32H2
-#  define UART_CLK_FREQ (CLK_LL_PLL_48M_FREQ_MHZ * MHZ)  /* PLL_F48M_CLK is used */
+#  define UART_CLK_FREQ ((uint32_t)CLK_LL_PLL_48M_FREQ_MHZ * MHZ)  /* PLL_F48M_CLK is used */
 #else
 #  error "Platform implementation is missing"
 #endif
@@ -104,6 +100,7 @@ struct uart_hw_t {
     uint8_t  signal_txd;    /* TxD signal from the controller */
     uint8_t  signal_rxd;    /* RxD signal to the controller */
     uint8_t  int_src;       /* peripheral interrupt source used by the UART device */
+    bool     powered;       /* indicates whether the UART is powered on */
 #endif
 };
 
@@ -236,6 +233,12 @@ void uart_write(uart_t uart, const uint8_t *data, size_t len)
     for (size_t i = 0; i < len; i++) {
         _uart_tx_one_char(uart, data[i]);
     }
+
+#ifndef CPU_ESP8266
+    /* uart_write is blocking, wait until all bytes are transmitted, but only
+     * if the UART is powered on, the transmission never completes otherwise */
+    while (_uarts[uart].powered && !uart_ll_is_tx_idle(_uarts[uart].regs)) {}
+#endif
 }
 
 void uart_poweron(uart_t uart)
@@ -244,6 +247,7 @@ void uart_poweron(uart_t uart)
 
 #ifndef CPU_ESP8266
     periph_module_enable(_uarts[uart].mod);
+    _uarts[uart].powered = true;
 #endif
     _uart_config(uart);
 }
@@ -253,6 +257,7 @@ void uart_poweroff(uart_t uart)
     assert(uart < UART_NUMOF);
 
 #ifndef CPU_ESP8266
+    _uarts[uart].powered = false;
     periph_module_disable(_uarts[uart].mod);
 #endif
 }

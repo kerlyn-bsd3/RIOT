@@ -38,7 +38,7 @@ Please paste or specifically describe the actual output.
 
 #### Versions
 <!--
-Operating system: macOS, Linux, Vagrant VM
+Operating system: macOS, Linux, Windows/WSL, Docker/Podman
 Build environment: GCC, CLang versions (you can run the following command from
 the RIOT base directory: make print-versions).
 -->
@@ -62,4 +62,7 @@ For further details, please refer to our AI policy: https://doc.riot-os.org/gene
 AI-Tools / LLMs that were used are:
 - none
 
-<!-- Thanks for contributing! -->
+<!--
+Keep this section as is even if no AI/LLM was used, **do not** remove it if you did not use any AI/LLM.
+Thanks for contributing!
+-->

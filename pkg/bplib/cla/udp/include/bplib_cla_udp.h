@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2026 Hamburg University of Technology (TUHH)
+ * SPDX-FileCopyrightText: 2026 Technische Universität Hamburg
  * SPDX-License-Identifier: LGPL-2.1-only
  */
 #pragma once
@@ -8,7 +8,7 @@
  * @ingroup pkg_bplib_cla
  * @brief Implementation of the UDPCL.
  *
- * # About
+ * ## About
  * Sends bundles via UDP, according to the legacy UDPCL. This legacy UDPCL
  * literally sends the bundles directly as UDP payload.
  *
@@ -18,6 +18,9 @@
  * Now the CLA is ready to receive but bplib does not know this contact is
  * active, so you also have to call BPLib_CLA_ContactSetup() and
  * BPLib_CLA_ContactStart().
+ *
+ * @note It will only receive from the given remote, UDP messages from other IPs
+ *       are silently ignored.
  *
  * @{
  *

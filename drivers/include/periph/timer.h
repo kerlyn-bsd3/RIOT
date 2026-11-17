@@ -131,6 +131,10 @@ typedef struct {
  * The timer will be started automatically after initialization with interrupts
  * enabled.
  *
+ * @pre     The timer must not be active when calling `timer_init()`. It must
+ *          either not have been initialized before or it must be stopped with
+ *          @ref timer_stop before calling `timer_init()` again.
+ *
  * @param[in] dev   the timer to initialize
  * @param[in] freq  requested number of ticks per second
  * @param[in] cb    this callback is called in interrupt context, the
@@ -149,6 +153,10 @@ int timer_init(tim_t dev, uint32_t freq, timer_cb_t cb, void *arg);
  * The callback given during initialization is called when timeout ticks have
  * passed after calling this function
  *
+ * This has no influence of the state of the timer.
+ * If it was running, it will continue to run.
+ * If it was stopped, it will remain stopped.
+ *
  * @param[in] dev           the timer device to set
  * @param[in] channel       the channel to set
  * @param[in] timeout       timeout in ticks after which the registered callback
@@ -164,6 +172,10 @@ int timer_set(tim_t dev, int channel, unsigned int timeout);
  *
  * Timers that are less wide than `unsigned int` (32-bit on most platforms)
  * accept and truncate overflown values.
+ *
+ * This has no influence of the state of the timer.
+ * If it was running, it will continue to run.
+ * If it was stopped, it will remain stopped.
  *
  * @param[in] dev           the timer device to set
  * @param[in] channel       the channel to set

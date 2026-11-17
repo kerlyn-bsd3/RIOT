@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021   Simon Brummer <simon.brummer@posteo.de>
-#
-# This file is subject to the terms and conditions of the GNU Lesser
-# General Public License v2.1. See the file LICENSE in the top level
-# directory for more details.
+# SPDX-FileCopyrightText: 2021 Simon Brummer <simon.brummer@posteo.de>
+# SPDX-License-Identifier: LGPL-2.1-only
 
 import os
 import sys
@@ -16,7 +13,7 @@ from helpers import Runner, SockTcpServer, SockTcpClient, HostTcpServer, HostTcp
 
 @Runner(timeout=5)
 def test_connection_lifecycle_as_client(child):
-    """ Open/close a single connection as sock tcp client """
+    """Open/close a single connection as sock tcp client."""
     # Setup Host as server
     with HostTcpServer(generate_port_number()) as host_srv:
         # Setup Riot Node as client
@@ -42,7 +39,7 @@ def test_connection_lifecycle_as_client(child):
 
 @Runner(timeout=10)
 def test_connection_lifecycle_as_server(child):
-    """ Open/close a single connection as sock tcp server """
+    """Open/close a single connection as sock tcp server."""
     # Setup Riot Node as server
     with SockTcpServer(child, generate_port_number()) as sock_srv:
 
@@ -72,7 +69,7 @@ def test_connection_lifecycle_as_server(child):
 
 @Runner(timeout=5)
 def test_send_data_from_riot_to_host(child):
-    """ Send Data from RIOT Node to Host system """
+    """Send Data from RIOT Node to Host system."""
     # Setup Host as server
     with HostTcpServer(generate_port_number()) as host_srv:
         # Setup Riot as client
@@ -91,7 +88,7 @@ def test_send_data_from_riot_to_host(child):
 
 @Runner(timeout=5)
 def test_send_data_from_host_to_riot(child):
-    """ Send Data from Host system to RIOT node """
+    """Send Data from Host system to RIOT node."""
     # Setup Riot Node as server
     with SockTcpServer(child, generate_port_number()) as sock_srv:
         # Setup Host as client
@@ -109,8 +106,10 @@ def test_send_data_from_host_to_riot(child):
 
 @Runner(timeout=10)
 def test_connection_listen_accept_cycle(child, iterations=10):
-    """ This test verifies sock_tcp in a typical server role by
-        accepting a connection, exchange data, teardown connection, handle the next one
+    """
+    Verify `sock_tcp` in a typical server role.
+
+    Accept a connection, exchange data, teardown connection, handle the next one.
     """
     # Setup RIOT Node as server
     with SockTcpServer(child, generate_port_number()) as sock_srv:
@@ -142,6 +141,26 @@ def test_connection_listen_accept_cycle(child, iterations=10):
                 elif dice_throw == 1:
                     host_cli.close()
                     sock_srv.disconnect()
+
+
+@Runner(timeout=5)
+def test_accept_timeout(child):
+    """sock_tcp_accept() waits for the given timeout without connection."""
+    with SockTcpServer(child, generate_port_number()):
+        child.sendline('sock_tcp_accept 500')
+        child.expect(r'sock_tcp_accept: waited (\d+) ms')
+        assert 500 <= int(child.match.group(1)) < 1000
+
+
+@Runner(timeout=5)
+def test_read_timeout(child):
+    """sock_tcp_read() waits for the given timeout without data."""
+    with SockTcpServer(child, generate_port_number()) as sock_srv:
+        with HostTcpClient(sock_srv):
+            sock_srv.accept(timeout_ms=1000)
+            child.sendline('sock_tcp_read 1 500')
+            child.expect(r'sock_tcp_read: waited (\d+) ms')
+            assert 500 <= int(child.match.group(1)) < 1000
 
 
 if __name__ == '__main__':
