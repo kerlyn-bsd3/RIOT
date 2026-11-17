@@ -1,19 +1,28 @@
 # 6LoBAC test bed: IPv6 over BACnet MS/TP (RFC 8163)
 
 This describes the bench used to develop and soak-test the RIOT `mstp` driver: a
-Linux host, a 6LoWPAN border router (`mstp_6lbr`), a 6LoWPAN node (`mstp_6lo`)
-and a bus monitor (`mstp_monitor`) on one RS-485 segment. With it you can
-reproduce the overnight soak test and the example frame in
-draft-ietf-6lo-rfc8163-bis Appendix D.
+Linux host, a 6LoBAC border router (6LBR, `mstp_6lbr`), a 6LoBAC node (6LN,
+`mstp_6ln`) and a bus monitor (`mstp_monitor`) on a single RS-485 segment. With it
+you can reproduce the overnight soak test and the example frame in
+draft-ietf-6lo-rfc8163-bis Appendix D. The tested target is the Nordic nRF52840-DK
+running RIOT.
 
 ```
-              USB: bus mirror (CDC-ACM)      USB: IPv6 uplink (CDC-ECM)
-   Linux host ───────────────────────┐   ┌──────────────────────────────┐
-   (fdea:dbee:f::1)                  │   │                              │
-                                 monitor        6LN                   6LBR
-                                  TS 0          TS 3                  TS 2
-   MS/TP RS-485, 115200 bit/s:    ├═════════════╪═════════════════════┤
-                                (end)        (middle)               (end)
+                  +------------------------------+
+                  |  Linux host (fdea:dbee:f::1) |
+                  +------------------------------+
+                     |            |
+          bus mirror |            | IPv6 uplink
+          (CDC-ACM)  |            | (CDC-ECM)
+                     |            |
+                +---------+  +---------+  +---------+
+                | monitor |  |  6LBR   |  |   6LN   |
+                |  MA 0   |  |  MA 2   |  |  MA 3   |    MA = MS/TP MAC address
+                +---------+  +---------+  +---------+
+                     |            |            |
+  RS-485 MS/TP  =====+============+============+=====
+  115.2 kbit/s     120 ohm     no R6        120 ohm
+                    (end)     (middle)       (end)
 ```
 Each board's J-Link USB also goes to the host, for flashing and consoles.
 
@@ -31,10 +40,10 @@ Software, all at the versions this document was written against:
 
 | Component | Version |
 |---|---|
-| RIOT | github.com/kerlyn-bsd3/RIOT, tag `6lobac-2026-11-02` (branch `6lobac-mstp`) |
-| Wireshark | built from source with the MS/TP / 6LoBAC MRs (see 6) until they are released |
+| RIOT | github.com/kerlyn-bsd3/RIOT, branch `6lobac-mstp`, tag `6lobac-2026-11-16` or newer |
+| Wireshark | built from master (see section 6) until the MS/TP / 6LoBAC changes are released |
 | Toolchain | `gcc-arm-none-eabi`, SEGGER J-Link software (`JLinkExe`) |
-| Python | 3, plus `pyserial` (and `scapy` for section 8) |
+| Python | v3, plus `pyserial` (and `scapy` for section 8) |
 
 ## 2. Hardware setup
 
@@ -55,48 +64,57 @@ to DE, so a station never hears its own transmission.
 
 **Termination.** Every DFR0259 has a 120 Ω terminator (R6, SMD) across A–B.
 ANSI/ASHRAE 135 Clause 9.2 wants exactly one at each physical end of the
-trunk, so remove R6 from the shield in the middle. Check with the bus idle and
-all boards powered off: A–B ≈ 60 Ω.
+trunk, so remove R6 from the shield in the middle. This requires tweezers and
+a heat gun. Check with the bus idle and all boards powered off: A–B ≈ 60 Ω.
 
-**Order on the bus** (as soaked on 27 Oct and 1 Nov):
+**Order on the bus**, left to right in the diagram above, so the MS/TP
+addresses read 0, 2, 3:
 
 ```
-monitor (R6 fitted) ── 6LN (R6 removed) ── 6LBR (R6 fitted)
+monitor (R6 fitted) -- 6LBR (R6 removed) -- 6LN (R6 fitted)
    end                    middle              end
 ```
 
 Write down each DK's J-Link serial number (printed on the board, or
 `ls /dev/serial/by-id/`). Every command below names a board by its SN, because
-with three DKs attached, the default board is a guess.
+with three DKs attached, neither the `/dev/ttyACM*` device names nor the J-Link
+that `make` picks by default are predictable.
 
-| Role | App | MS/TP address | J-Link SN (this bed) |
-|---|---|---|---|
-| Monitor | `mstp_monitor` | 0 | 683839002 |
-| 6LBR | `mstp_6lbr` | 2 | 683509660 |
-| 6LN | `mstp_6lo` | 3 | 683631552 |
+| Role | App | MS/TP address | J-Link SN (example) | Shell variable |
+|---|---|---|---|---|
+| Monitor | `mstp_monitor` | 0 | 683839002 | `SN_MON` |
+| 6LBR | `mstp_6lbr` | 2 | 683509660 | `SN_6LBR` |
+| 6LN | `mstp_6ln` | 3 | 683631552 | `SN_6LN` |
 
-Nmax_manager is 8 on this bed (the default in both apps). Leave address 1
-unused: the monitor polls it.
+Nmax_manager is 8 on this bed (the default in all three apps). Each app's
+`Makefile` sets its default station address; override it on the command line
+with `make MSTP_ADDR=<n> …`.
+
+Export the shell variables, for example:
+
+```sh
+export SN_MON=683839002 SN_6LBR=683509660 SN_6LN=683631552
+```
 
 ## 3. Ports on the host
 
-Use the stable `/dev/serial/by-id/` names, not `/dev/ttyACMn`, which change
+Use the stable `/dev/serial/by-id/` names, not `/dev/ttyACM*`, which change
 when boards are re-plugged.
 
 | Port | What it is | Used by |
 |---|---|---|
-| `usb-SEGGER_J-Link_000<monitor SN>-if00` | monitor console (J-Link VCP) | `make term` |
+| `usb-SEGGER_J-Link_000$SN_MON-if00` | monitor console (J-Link VCP) | `make term` |
 | `usb-RIOT-os.org_nrf52840dk_<serial>-if00` | monitor bus mirror (nRF USB, CDC-ACM) | `mstp_capture.py` |
-| `usb-SEGGER_J-Link_000<6LN SN>-if00` | 6LN console (J-Link VCP) | `make term` |
-| (no tty) | 6LBR console over RTT on its J-Link | `make term CONSOLE=rtt` |
+| `usb-SEGGER_J-Link_000$SN_6LN-if00` | 6LN console (J-Link VCP) | `make term` |
+| (no tty) | 6LBR console over RTT on its J-Link | `make … UPLINK=cdc-ecm … term` |
 | `enx…` network interface | 6LBR uplink (nRF USB, CDC-ECM) | `start_ecm.sh` |
 
 If the host is a VM, connect every J-Link and nRF USB device to the VM.
 
 ## 4. Build and flash
 
-In each case: `cd` to the app, build, flash by SN. `$SN_*` are the serial
-numbers above.
+In each case: `cd` to the app, build, flash by SN. `$SN_*` are the shell
+variables from section 2.
 
 ```sh
 cd examples/networking/mstp_monitor
@@ -105,17 +123,16 @@ make BOARD=nrf52840dk JLINK_SERIAL=$SN_MON clean flash
 cd ../mstp_6lbr
 make BOARD=nrf52840dk UPLINK=cdc-ecm JLINK_SERIAL=$SN_6LBR clean flash
 
-cd ../mstp_6lo
+cd ../mstp_6ln
 make BOARD=nrf52840dk JLINK_SERIAL=$SN_6LN clean flash
 ```
 
 `UPLINK=cdc-ecm` puts the 6LBR's uplink on the nRF USB port and its console
 on RTT.
-`MSTP_ADDR=<n>` overrides a station's address.
 
 ## 5. Bring-up
 
-A suggested terminal per job (eight on the reference bench):
+A suggested terminal per job (seven on the reference bench):
 
 | # | Directory | Job |
 |---|---|---|
@@ -124,9 +141,8 @@ A suggested terminal per job (eight on the reference bench):
 | 3 | Wireshark tree | build Wireshark (section 6) |
 | 4 | `mstp_6lbr` | `sudo ./start_ecm.sh` |
 | 5 | any | host commands: `ping6` (sections 5 and 7), the Scapy send (section 8) |
-| 6 | `mstp_6lbr` | build/flash/J-Link commands |
-| 7 | `mstp_6lbr` | console: `make BOARD=nrf52840dk UPLINK=cdc-ecm CONSOLE=rtt JLINK_SERIAL=$SN_6LBR term` |
-| 8 | `mstp_6lo` | build/flash, console: `make BOARD=nrf52840dk PORT=/dev/serial/by-id/usb-SEGGER_J-Link_000$SN_6LN-if00 term` |
+| 6 | `mstp_6lbr` | build/flash, console: `make BOARD=nrf52840dk UPLINK=cdc-ecm JLINK_SERIAL=$SN_6LBR term` (RTT) |
+| 7 | `mstp_6ln` | build/flash, console: `make BOARD=nrf52840dk PORT=/dev/serial/by-id/usb-SEGGER_J-Link_000$SN_6LN-if00 term` |
 
 
 Bring the bed up in this order:
@@ -152,8 +168,8 @@ Bring the bed up in this order:
 
 ## 6. Wireshark
 
-Until the MS/TP and 6LoBAC changes are in a Wireshark release, build from
-source with these merge requests:
+The MS/TP and 6LoBAC changes are merged into Wireshark master but are not
+yet in a release, so build master from source. The changes:
 - wireshark/wireshark!27569: 135-2024 terminology;
 - !27570: decode all COBS frame types, dissect Frame Type 34 as 6LoWPAN, and
   check CRC-32K and lengths;
@@ -162,13 +178,12 @@ source with these merge requests:
 ```sh
 git clone https://gitlab.com/wireshark/wireshark.git && cd wireshark
 sudo tools/debian-setup.sh --install-optional
-# merge or cherry-pick the three MR branches, then:
 mkdir build && cd build && cmake -G Ninja .. && ninja
 ```
 
 Set 6LoWPAN context 0 to `aaaa::/64`, the prefix the 6LBR advertises: Edit →
-Preferences → Protocols → 6LoWPAN → Context 0, or `-o
-6lowpan.context0:aaaa::/64` for tshark. IPHC elides the 6LN's address using
+Preferences → Protocols → 6LoWPAN → Context 0, or
+`-o 6lowpan.context0:aaaa::/64` for tshark. IPHC elides the 6LN's address using
 context 0, so without this setting it isn't recovered.
 
 ## 7. The soak test
@@ -228,7 +243,7 @@ Counters that are not errors:
 - `offline` on the monitor: octets seen while no host had the mirror port
   open.
 
-The RTT is mostly MS/TP token rotation at 115200 bit/s: the reply waits for
+The RTT is mostly MS/TP token rotation at 115.2 kbit/s: the reply waits for
 the token, plus the Poll For Manager cycles of the stations that poll.
 
 ## 8. Reproducing the Appendix D frame
@@ -258,14 +273,11 @@ case in Appendix B: zeros, consecutive zeros, 254-octet blocks in the middle,
 a final block of exactly 254 octets in the Encoded Data, and an Encoded
 CRC-32K whose last octet is a zero (CRC-32K c4 31 32 00).
 
-To decode it as in Appendix D, set 6LoWPAN context 0 to `aaaa::/64` (the
-prefix the 6LBR advertises): in Wireshark, Edit → Preferences → Protocols →
-6LoWPAN → Context 0; with tshark, `-o 6lowpan.context0:aaaa::/64`. Without it,
-the 6LN's address, which IPHC elides using context 0, is not recovered. Then
+To decode it as in Appendix D, with 6LoWPAN context 0 set as in section 6,
 dump the request with:
 
 ```sh
-tshark -r appd.pcap -o 6lowpan.context0:aaaa::/64 \
+tshark -r <capture file> -o 6lowpan.context0:aaaa::/64 \
   -Y "mstp.src == 2 && mstp.dst == 3 && icmpv6.echo.identifier == 0x6f49" -V -x
 ```
 
