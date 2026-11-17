@@ -77,7 +77,7 @@
 #define MSTP_STM32_IRQ_PRIO 1                     /* compile the NVIC-priority block in main() */
 
 #else
-#error "mstp_6lo: unsupported BOARD - add a board-config block (MS/TP UART, DE pin, quirks)"
+#error "mstp_6ln: unsupported BOARD - add a board-config block (MS/TP UART, DE pin, quirks)"
 #endif
 
 /* Common defaults (a board block above may already define MSTP_ORE_* / pad). */

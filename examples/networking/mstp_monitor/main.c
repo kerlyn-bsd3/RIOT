@@ -66,7 +66,7 @@
 
 #if defined(BOARD_NRF52840DK)
 /* UARTE1 = Arduino D0/D1 (P1.01 rx / P1.02 tx); DE = D2 = P1.03; one 0xFF pad
- * (ENDTX fires before the stop bit) — identical to mstp_6lo / mstp_6lbr. */
+ * (ENDTX fires before the stop bit) — identical to mstp_6ln / mstp_6lbr. */
 #define MSTP_BOARD_NAME     "nrf52840dk"
 #define MSTP_UART_DEV       UART_DEV(1)
 #define MSTP_DE_PIN         GPIO_PIN(1, 3)

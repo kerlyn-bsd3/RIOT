@@ -1,5 +1,5 @@
 # 6LoBAC: IPv6-over-MS/TP (RFC 8163) node on the ST Nucleo-F767ZI + DFR0259.
-APPLICATION = mstp_6lo
+APPLICATION = mstp_6ln
 
 BOARD ?= nucleo-f767zi
 RIOTBASE ?= $(CURDIR)/../../..

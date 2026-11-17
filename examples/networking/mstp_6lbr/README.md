@@ -2,7 +2,7 @@
 
 A RIOT 6LoWPAN border router (6LBR) that bridges an **MS/TP** link (downstream,
 RFC 8163) to an IPv6 uplink over **SLIP** to a Linux host running tunslip6.
-Sibling of `mstp_6lo`; same board-agnostic `mstp` driver, in the 6LBR role.
+Sibling of `mstp_6ln`; same board-agnostic `mstp` driver, in the 6LBR role.
 
 The test bed (monitor, 6LBR and 6LN), the soak test and the
 draft-ietf-6lo-rfc8163-bis Appendix D example are described in
@@ -19,7 +19,7 @@ last section below); SLIP is the alternative.
 
 The 6LBR does the 6LoWPAN-ND the old Contiki BDK lacked: it answers NS(ARO) with
 NA(ARO) and advertises the prefix + 6CO + ABRO, so a 6LN registers natively.
-Its peer is the RIOT 6LN (`mstp_6lo`) at MS/TP station 3.
+Its peer is the RIOT 6LN (`mstp_6ln`) at MS/TP station 3.
 
 ## Build & flash (on the VM)
 

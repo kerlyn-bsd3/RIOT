@@ -14,7 +14,7 @@ prerequisite milestone and is where the timing-sensitive risk lives.
 
 Implemented and verified: the Receive Frame FSM (9.5.4), the Manager Node FSM
 (9.5.6), SendFrame dispatch (9.5.5), the ISR↔FSM link glue, Frame Type 34
-build/parse, and the `netdev_driver_t` ops + gnrc attachment (the `mstp_6lo`
+build/parse, and the `netdev_driver_t` ops + gnrc attachment (the `mstp_6ln`
 6LN app). Validated end to end — the node joins the ring, passes the token, and
 answers ICMPv6 echo — on both `nrf52840dk` and `nucleo-f767zi`. Deferred: the
 6LBR role, the Subordinate Node FSM (9.5.7), the `periph_uart_rx_error` feature
